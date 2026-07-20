@@ -1,0 +1,231 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Intent-Swarm-Commander Cone of Uncertainty</title>
+    <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+    </script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: sans-serif; padding: 2rem; }
+        .card { background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; overflow-x: auto; }
+        h1, h2 { margin-top: 0; }
+        .path-list { list-style: none; padding: 0; }
+        .path-list li { margin-bottom: 1rem; padding: 1rem; border-left: 4px solid; background: #0f172a; }
+        .path-list li.aligned { border-color: #f87171; }
+        .path-list li.hypothetical { border-color: #facc15; }
+        .path-list li.eliminated { border-color: #f87171; }
+        .node-list li { border-color: #a78bfa !important; }
+        .sub-node-list { list-style: none; padding-left: 2rem; margin-top: 1rem; border-left: 2px dashed #6366f1; }
+        .sub-node-list li { border-color: #818cf8 !important; padding: 0.5rem 1rem; margin-bottom: 0.5rem; background: #1e1b4b; }
+        
+        /* Fullscreen styles */
+        .fullscreen-btn {
+            float: right;
+            padding: 8px 16px;
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.2s;
+        }
+        .fullscreen-btn:hover { background-color: #2563eb; }
+        
+        :fullscreen #diagram-container {
+            width: 100vw !important;
+            height: 100vh !important;
+            margin: 0;
+            border-radius: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        :fullscreen .mermaid {
+            flex-grow: 1;
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        /* Tooltip Styles */
+        #tooltip {
+            position: absolute;
+            display: none;
+            background: #0f172a;
+            border: 1px solid #3b82f6;
+            border-radius: 6px;
+            padding: 1rem;
+            color: #f8fafc;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            max-width: 350px;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="tooltip"></div>
+    <h1>Intent-Swarm-Commander Ideation: Cone of Uncertainty</h1>
+    
+    <div class="card">
+        <h2>Vision</h2>
+        <p><strong>AS-IS:</strong> A generic baseline architecture for standard multi-agent systems, characterized by disparate API integrations, lack of deterministic verification, and non-cohesive orchestration.</p>
+        <p><strong>TO-BE:</strong> Intent Driven Swarm Commander</p>
+    </div>
+
+    <div class="card" id="diagram-container">
+        <h2>LTV Cone Diagram <button class="fullscreen-btn" onclick="toggleFullScreen()">Toggle Fullscreen</button></h2>
+        <div class="mermaid">
+        
+graph LR
+    classDef current fill:#1e40af,stroke:#60a5fa,stroke-width:2px,color:#fff
+    classDef target fill:#991b1b,stroke:#f87171,stroke-width:2px,color:#fff
+    classDef hypothetical fill:#854d0e,stroke:#facc15,stroke-width:1px,stroke-dasharray: 5 5,color:#fff
+    classDef rejected fill:#450a0a,stroke:#f87171,stroke-width:1px,stroke-dasharray: 5 5,color:#fff
+    classDef node fill:#4c1d95,stroke:#a78bfa,stroke-width:2px,color:#fff
+    classDef subnode fill:#312e81,stroke:#818cf8,stroke-width:1px,color:#fff
+
+    CurrentState["AS-IS State"]:::current
+    MCP_Integration_Standard["Mcp Integration Standard"]:::node
+    Neuro_Symbolic_Verification["Neuro Symbolic Verification"]:::node
+    Verification_1_Constraint_Graph["Verification 1 Constraint Graph"]:::subnode
+    Verification_2_Abductive_Logic_Gate["Verification 2 Abductive Logic Gate"]:::subnode
+    Verification_3_MINT_Integration["Verification 3 Mint Integration"]:::subnode
+    Intent_Driven_Swarm_Commander["Intent Driven Swarm Commander (TO-BE Goal)"]
+    class Intent_Driven_Swarm_Commander target
+    CurrentState ==> MCP_Integration_Standard
+    MCP_Integration_Standard ==> Verification_1_Constraint_Graph
+    Verification_1_Constraint_Graph ==> Verification_2_Abductive_Logic_Gate
+    Verification_2_Abductive_Logic_Gate ==> Verification_3_MINT_Integration
+    Verification_3_MINT_Integration ==> Neuro_Symbolic_Verification
+    Neuro_Symbolic_Verification ==> Intent_Driven_Swarm_Commander
+
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Paths (TO-BE Goals)</h2>
+        <ul class="path-list">
+            <li style="border-color: #f87171;"><strong>Intent Driven Swarm Commander</strong> (TO-BE Goal) <span style="color: #60a5fa;">[Domain: Complicated]</span><br/>Refactoring Drone-Swarm project. Build an MCP-enabled Command Agent that translates high-level military intents (SMEAC orders) into coordinated drone swarm actions using coarse-grained operators. Showcases cross-domain fusion.</li>
+
+        </ul>
+    </div>
+
+    <div class="card">
+        <h2>Reversed Cone: Critical Node Points</h2>
+        <ul class="path-list node-list">
+            <li><strong>Mcp Integration Standard</strong> (Q3 2026) <span style="color: #60a5fa;">[Domain: Complex]</span> <span style="color: #34d399;">[OODA Loops: 5 | Status: Completed]</span><br/>Adoption of Model Context Protocol (MCP) as the universal, standardized interface for all new microservices, enabling agent-to-tool connectivity without custom brittle integrations.<br/><br/><strong>Research:</strong> Single responsibility servers; Stateless design with Redis; SSE/WebSockets for transport; OIDC/OAuth 2.1 gateway auth; Tool-level RBAC; Containerized on K8s with HPA.            </li>
+            <li><strong>Neuro Symbolic Verification</strong> (Q3 2027) <span style="color: #60a5fa;">[Domain: Complex]</span> <span style="color: #34d399;">[OODA Loops: 5 | Status: Completed]</span><br/>Implementing hardcoded, rule-based verification gates that mathematically prove LLM-generated configurations before pushing them to physical networks or drone swarms.<br/><br/><strong>Research:</strong> Z3 / SMT Solvers and NSVIF to mathematically constrain outputs. False Cone: LLM Self-Reflection.
+                <ul class="sub-node-list">
+                    <li><strong>Verification 1 Constraint Graph</strong> (Q2 2027) <span style="color: #60a5fa;">[Domain: Complex]</span> <span style="color: #34d399;">[OODA Loops: 5 | Status: Completed]</span><br/>Formalizing physical drone/6G safety limits into a queryable knowledge graph.</li>
+                    <li><strong>Verification 2 Abductive Logic Gate</strong> (Q2 2027) <span style="color: #60a5fa;">[Domain: Complex]</span> <span style="color: #34d399;">[OODA Loops: 5 | Status: Completed]</span><br/>The code layer that cross-checks LLM outputs against the Constraint Graph.</li>
+                    <li><strong>Verification 3 Mint Integration</strong> (Q3 2027) <span style="color: #60a5fa;">[Domain: Complex]</span> <span style="color: #34d399;">[OODA Loops: 5 | Status: Completed]</span><br/>Minimal Information Neuro-Symbolic Tree integration to allow agents to resolve ambiguities safely.</li>
+                </ul>
+            </li>
+
+        </ul>
+    </div>
+
+    <script>
+        const nodeDetails = {"CurrentState": "<strong>AS-IS State</strong><br/><br/>A generic baseline architecture for standard multi-agent systems, characterized by disparate API integrations, lack of deterministic verification, and non-cohesive orchestration.", "MCP_Integration_Standard": "<strong>Mcp Integration Standard</strong><br/>Adoption of Model Context Protocol (MCP) as the universal, standardized interface for all new microservices, enabling agent-to-tool connectivity without custom brittle integrations.<br/><br/><span style='color: #fbbf24;'><strong>Research (2026):</strong> Single responsibility servers; Stateless design with Redis; SSE/WebSockets for transport; OIDC/OAuth 2.1 gateway auth; Tool-level RBAC; Containerized on K8s with HPA.</span><br/><br/><span style='color: #60a5fa;'>Domain: Complex</span><br/><span style='color: #34d399;'>OODA Loops: 5 | Status: Completed</span>", "Neuro_Symbolic_Verification": "<strong>Neuro Symbolic Verification</strong><br/>Implementing hardcoded, rule-based verification gates that mathematically prove LLM-generated configurations before pushing them to physical networks or drone swarms.<br/><br/><span style='color: #fbbf24;'><strong>Research (2026):</strong> Z3 / SMT Solvers and NSVIF to mathematically constrain outputs. False Cone: LLM Self-Reflection.</span><br/><br/><span style='color: #60a5fa;'>Domain: Complex</span><br/><span style='color: #34d399;'>OODA Loops: 5 | Status: Completed</span>", "Verification_1_Constraint_Graph": "<strong>Verification 1 Constraint Graph</strong><br/>Formalizing physical drone/6G safety limits into a queryable knowledge graph.<br/><br/><span style='color: #60a5fa;'>Domain: Complex</span><br/><span style='color: #34d399;'>OODA Loops: 5 | Status: Completed</span>", "Verification_2_Abductive_Logic_Gate": "<strong>Verification 2 Abductive Logic Gate</strong><br/>The code layer that cross-checks LLM outputs against the Constraint Graph.<br/><br/><span style='color: #60a5fa;'>Domain: Complex</span><br/><span style='color: #34d399;'>OODA Loops: 5 | Status: Completed</span>", "Verification_3_MINT_Integration": "<strong>Verification 3 Mint Integration</strong><br/>Minimal Information Neuro-Symbolic Tree integration to allow agents to resolve ambiguities safely.<br/><br/><span style='color: #60a5fa;'>Domain: Complex</span><br/><span style='color: #34d399;'>OODA Loops: 5 | Status: Completed</span>", "Intent_Driven_Swarm_Commander": "<strong>Intent Driven Swarm Commander</strong><br/><em>TO-BE Goal</em><br/><br/>Refactoring Drone-Swarm project. Build an MCP-enabled Command Agent that translates high-level military intents (SMEAC orders) into coordinated drone swarm actions using coarse-grained operators. Showcases cross-domain fusion.<br/><br/><span style='color: #60a5fa;'>Domain: Complicated</span>"};
+        let panZoomInstance = null;
+        
+        // Setup Pan and Zoom after Mermaid renders
+        const observer = new MutationObserver((mutations, obs) => {
+            const svg = document.querySelector('.mermaid svg');
+            if (svg) {
+                // Set initial height so panzoom behaves
+                svg.style.maxHeight = 'none';
+                svg.style.height = '600px'; 
+                
+                panZoomInstance = svgPanZoom(svg, {
+                    zoomEnabled: true,
+                    controlIconsEnabled: true,
+                    fit: true,
+                    center: true,
+                    minZoom: 0.1,
+                    maxZoom: 10
+                });
+                obs.disconnect();
+            }
+        });
+        
+        observer.observe(document.getElementById('diagram-container'), { childList: true, subtree: true });
+
+        // Fullscreen Logic
+        function toggleFullScreen() {
+            const container = document.getElementById('diagram-container');
+            if (!document.fullscreenElement) {
+                container.requestFullscreen().catch(err => {
+                    console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        document.addEventListener("fullscreenchange", function() {
+            const svg = document.querySelector('.mermaid svg');
+            if (svg && panZoomInstance) {
+                if (document.fullscreenElement) {
+                    svg.style.height = '100%';
+                } else {
+                    svg.style.height = '600px';
+                }
+                // Wait for the browser to recalculate dimensions, then resize diagram
+                setTimeout(() => {
+                    panZoomInstance.resize();
+                    panZoomInstance.fit();
+                    panZoomInstance.center();
+                }, 100);
+            }
+        });
+        
+        // Tooltip Logic
+        document.addEventListener('mouseover', function(e) {
+            const node = e.target.closest('.node');
+            const tooltip = document.getElementById('tooltip');
+            
+            if (node) {
+                const idAttr = node.getAttribute('id') || '';
+                let foundKey = null;
+                
+                for (const key in nodeDetails) {
+                    if (idAttr.includes(key)) {
+                        foundKey = key;
+                        break;
+                    }
+                }
+                
+                if (foundKey) {
+                    tooltip.innerHTML = nodeDetails[foundKey];
+                    tooltip.style.display = 'block';
+                }
+            }
+        });
+        
+        document.addEventListener('mousemove', function(e) {
+            const tooltip = document.getElementById('tooltip');
+            if (tooltip.style.display === 'block') {
+                let x = e.pageX + 15;
+                let y = e.pageY + 15;
+                if (x + 350 > window.innerWidth) x = e.pageX - 365;
+                tooltip.style.left = x + 'px';
+                tooltip.style.top = y + 'px';
+            }
+        });
+
+        document.addEventListener('mouseout', function(e) {
+            const node = e.target.closest('.node');
+            if (node) {
+                document.getElementById('tooltip').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
