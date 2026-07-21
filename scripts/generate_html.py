@@ -10,10 +10,10 @@ def get_cynefin_map():
     if not os.path.exists(CYNEFIN_DB): return {}
     conn = sqlite3.connect(CYNEFIN_DB)
     c = conn.cursor()
-    c.execute('SELECT name, domain FROM assessments')
+    c.execute('SELECT name, domain, reason FROM assessments')
     rows = c.fetchall()
     conn.close()
-    return {r[0]: r[1] for r in rows}
+    return {r[0]: {"domain": r[1], "reason": r[2]} for r in rows}
 
 def get_ooda_map():
     if not os.path.exists(OODA_DB): return {}
@@ -21,8 +21,11 @@ def get_ooda_map():
     c = conn.cursor()
     c.execute('SELECT target_node, COUNT(id), MAX(status) FROM ooda_loops GROUP BY target_node')
     rows = c.fetchall()
+    c.execute('SELECT target_node, observation, orientation_analysis, decision_hypothesis, action_plan FROM ooda_loops WHERE id IN (SELECT MAX(id) FROM ooda_loops GROUP BY target_node)')
+    details_rows = c.fetchall()
+    details = {r[0]: {"obs": r[1], "ori": r[2], "dec": r[3], "act": r[4]} for r in details_rows}
     conn.close()
-    return {r[0]: {"count": r[1], "status": r[2]} for r in rows}
+    return {r[0]: {"count": r[1], "status": r[2], "details": details.get(r[0], {})} for r in rows}
 
 def get_vision():
     conn = sqlite3.connect('ltv_database.db')
@@ -81,9 +84,7 @@ for n in all_nodes:
     else:
         parent_nodes.append(n)
 
-path_funnel = {
-    "Intent_Driven_Swarm_Commander": ("Neuro_Symbolic_Verification", "MCP_Integration_Standard")
-}
+
 
 node_details = {}
 node_details["CurrentState"] = f"<strong>AS-IS State</strong><br/><br/>{as_is}"
@@ -98,6 +99,7 @@ graph LR
     classDef subnode fill:#312e81,stroke:#818cf8,stroke-width:1px,color:#fff
 
     CurrentState["AS-IS State"]:::current
+    ToBeState["TO-BE State"]:::target
 """
 
 # Render node definitions
@@ -107,28 +109,49 @@ for n in all_nodes:
     title = name.replace("_", " ").title()
     meta = json.loads(n[3] or '{}')
     
-    cynefin_domain = cynefin_map.get(name, "Not Assessed")
-    ooda_info = ooda_map.get(name, {"count": 0, "status": "None"})
-    ooda_str = f"OODA Loops: {ooda_info['count']} | Status: {ooda_info['status']}"
+    cyn_info = cynefin_map.get(name, {"domain": "Not Assessed", "reason": ""})
+    cynefin_domain = cyn_info.get("domain", "Not Assessed")
+    cynefin_reason = f"<div style='margin-top: 4px; font-size: 0.85em; color: #94a3b8;'>{cyn_info.get('reason', '')}</div>" if cyn_info.get("reason") else ""
+    
+    ooda_info = ooda_map.get(name, {"count": 0, "status": "None", "details": {}})
+    d = ooda_info.get("details", {})
+    ooda_details_html = ""
+    if d:
+        ooda_details_html = f"<div style='margin-top: 8px; font-size: 0.85em; border-left: 2px solid #34d399; padding-left: 8px;'><span style='color: #94a3b8;'>Obs:</span> {d.get('obs')}<br/><span style='color: #94a3b8;'>Ori:</span> {d.get('ori')}<br/><span style='color: #94a3b8;'>Dec:</span> {d.get('dec')}<br/><span style='color: #94a3b8;'>Act:</span> {d.get('act')}</div>"
+        
+    ooda_str = f"OODA Loops: {ooda_info['count']} | Status: {ooda_info['status']}{ooda_details_html}"
     
     research = meta.get("research_summary", "")
     research_html = f"<br/><br/><span style='color: #fbbf24;'><strong>Research (2026):</strong> {research}</span>" if research else ""
     
-    node_details[name] = f"<strong>{title}</strong><br/>{desc}{research_html}<br/><br/><span style='color: #60a5fa;'>Domain: {cynefin_domain}</span><br/><span style='color: #34d399;'>{ooda_str}</span>"
+    node_details[name] = f"<strong>{title}</strong><br/>{desc}{research_html}<br/><br/><span style='color: #60a5fa;'>Domain: {cynefin_domain}</span>{cynefin_reason}<br/><span style='color: #34d399;'>{ooda_str}</span>"
     
     if "parent" in meta:
         mermaid_code += f'    {name}["{title}"]:::subnode\n'
+        mermaid_code += f'    {name} --> {meta["parent"]}\n'
     else:
         mermaid_code += f'    {name}["{title}"]:::node\n'
+        mermaid_code += f'    {name} --> ToBeState\n'
 
 for p in paths:
-    name, status, desc, _ = p
+    name, status, desc, meta_str = p
+    meta = json.loads(meta_str) if meta_str else {}
     title = name.replace("_", " ").title()
     
     status_label = "TO-BE Goal" if status == "aligned" else status
-    cynefin_domain = cynefin_map.get(name, "Not Assessed")
+    cyn_info = cynefin_map.get(name, {"domain": "Not Assessed", "reason": ""})
+    cynefin_domain = cyn_info.get("domain", "Not Assessed")
+    cynefin_reason = f"<div style='margin-top: 4px; font-size: 0.85em; color: #94a3b8;'>{cyn_info.get('reason', '')}</div>" if cyn_info.get("reason") else ""
     
-    node_details[name] = f"<strong>{title}</strong><br/><em>{status_label}</em><br/><br/>{desc}<br/><br/><span style='color: #60a5fa;'>Domain: {cynefin_domain}</span>"
+    ooda_info = ooda_map.get(name, {"count": 0, "status": "None", "details": {}})
+    d = ooda_info.get("details", {})
+    ooda_details_html = ""
+    if d:
+        ooda_details_html = f"<div style='margin-top: 8px; font-size: 0.85em; border-left: 2px solid #34d399; padding-left: 8px;'><span style='color: #94a3b8;'>Obs:</span> {d.get('obs')}<br/><span style='color: #94a3b8;'>Ori:</span> {d.get('ori')}<br/><span style='color: #94a3b8;'>Dec:</span> {d.get('dec')}<br/><span style='color: #94a3b8;'>Act:</span> {d.get('act')}</div>"
+        
+    ooda_str = f"OODA Loops: {ooda_info['count']} | Status: {ooda_info['status']}{ooda_details_html}"
+    
+    node_details[name] = f"<strong>{title}</strong><br/><em>{status_label}</em><br/><br/>{desc}<br/><br/><span style='color: #60a5fa;'>Domain: {cynefin_domain}</span>{cynefin_reason}<br/><span style='color: #34d399;'>{ooda_str}</span>"
     
     if status == "aligned":
         title = f"{title} (TO-BE Goal)"
@@ -137,31 +160,22 @@ for p in paths:
     
     if status == "aligned":
         mermaid_code += f'    class {name} target\n'
-        
-        if name in path_funnel:
-            parent_name, gen_name = path_funnel[name]
-            
-            mermaid_code += f'    CurrentState ==> {gen_name}\n'
-            
-            subs = subs_by_parent.get(parent_name, [])
-            if subs:
-                mermaid_code += f'    {gen_name} ==> {subs[0][0]}\n'
-                for i in range(len(subs)-1):
-                    mermaid_code += f'    {subs[i][0]} ==> {subs[i+1][0]}\n'
-                mermaid_code += f'    {subs[-1][0]} ==> {parent_name}\n'
-            else:
-                mermaid_code += f'    {gen_name} ==> {parent_name}\n'
-                
-            mermaid_code += f'    {parent_name} ==> {name}\n'
-        else:
-            mermaid_code += f'    CurrentState ==> {name}\n'
-            
     elif status == "hypothetical":
-        mermaid_code += f'    CurrentState -.-> {name}\n'
         mermaid_code += f'    class {name} hypothetical\n'
     elif status == "eliminated":
-        mermaid_code += f'    CurrentState -.-> {name}\n'
         mermaid_code += f'    class {name} rejected\n'
+        
+    parent_node = meta.get("parent_node")
+    if parent_node:
+        if status == "aligned":
+            mermaid_code += f'    {name} ==> {parent_node}\n'
+        else:
+            mermaid_code += f'    {name} -.-> {parent_node}\n'
+    else:
+        if status == "aligned":
+            mermaid_code += f'    CurrentState ==> {name}\n'
+        else:
+            mermaid_code += f'    CurrentState -.-> {name}\n'
 
 
 html = f"""
@@ -261,9 +275,20 @@ for p in paths:
     html_class = status if status != "aligned" else "target"
     status_label = "TO-BE Goal" if status == "aligned" else status
     border_color = "#f87171" if status == "aligned" else ("#facc15" if status == "hypothetical" else "#f87171")
-    cynefin_domain = cynefin_map.get(name, "Not Assessed")
     
-    html += f'            <li style="border-color: {border_color};"><strong>{name.replace("_", " ").title()}</strong> ({status_label}) <span style="color: #60a5fa;">[Domain: {cynefin_domain}]</span><br/>{desc}</li>\n'
+    cyn_info = cynefin_map.get(name, {"domain": "Not Assessed", "reason": ""})
+    cynefin_domain = cyn_info.get("domain", "Not Assessed")
+    cynefin_reason = f"<br/><span style='font-size: 0.9em; color: #94a3b8;'>{cyn_info.get('reason', '')}</span>" if cyn_info.get("reason") else ""
+    
+    ooda_info = ooda_map.get(name, {"count": 0, "status": "None", "details": {}})
+    d = ooda_info.get("details", {})
+    ooda_details_html = ""
+    if d:
+        ooda_details_html = f"<div style='margin-top: 8px; font-size: 0.9em; border-left: 2px solid #34d399; padding-left: 8px; background: #0f172a;'><span style='color: #94a3b8;'>Obs:</span> {d.get('obs')}<br/><span style='color: #94a3b8;'>Ori:</span> {d.get('ori')}<br/><span style='color: #94a3b8;'>Dec:</span> {d.get('dec')}<br/><span style='color: #94a3b8;'>Act:</span> {d.get('act')}</div>"
+    
+    ooda_str = f"OODA Loops: {ooda_info['count']} | Status: {ooda_info['status']}"
+    
+    html += f'            <li style="border-color: {border_color};"><strong>{name.replace("_", " ").title()}</strong> ({status_label}) <span style="color: #60a5fa;">[Domain: {cynefin_domain}]</span> <span style="color: #34d399;">[{ooda_str}]</span><br/>{desc}{cynefin_reason}{ooda_details_html}</li>\n'
 
 html += """
         </ul>
@@ -281,20 +306,36 @@ if parent_nodes:
         meta_dict = json.loads(meta) if meta else {}
         research = meta_dict.get("research_summary", "")
         research_html = f"<br/><br/><strong>Research:</strong> {research}" if research else ""
-        cynefin_domain = cynefin_map.get(name, "Not Assessed")
-        ooda_info = ooda_map.get(name, {"count": 0, "status": "None"})
+        cyn_info = cynefin_map.get(name, {"domain": "Not Assessed", "reason": ""})
+        cynefin_domain = cyn_info.get("domain", "Not Assessed")
+        cynefin_reason = f"<br/><span style='font-size: 0.9em; color: #94a3b8;'>{cyn_info.get('reason', '')}</span>" if cyn_info.get("reason") else ""
+        
+        ooda_info = ooda_map.get(name, {"count": 0, "status": "None", "details": {}})
+        d = ooda_info.get("details", {})
+        ooda_details_html = ""
+        if d:
+            ooda_details_html = f"<div style='margin-top: 8px; font-size: 0.9em; border-left: 2px solid #34d399; padding-left: 8px; background: #0f172a;'><span style='color: #94a3b8;'>Obs:</span> {d.get('obs')}<br/><span style='color: #94a3b8;'>Ori:</span> {d.get('ori')}<br/><span style='color: #94a3b8;'>Dec:</span> {d.get('dec')}<br/><span style='color: #94a3b8;'>Act:</span> {d.get('act')}</div>"
+            
         ooda_str = f"OODA Loops: {ooda_info['count']} | Status: {ooda_info['status']}"
-        html += f'            <li><strong>{name.replace("_", " ").title()}</strong> ({timestamp}) <span style="color: #60a5fa;">[Domain: {cynefin_domain}]</span> <span style="color: #34d399;">[{ooda_str}]</span><br/>{desc}{research_html}'
+        html += f'            <li><strong>{name.replace("_", " ").title()}</strong> ({timestamp}) <span style="color: #60a5fa;">[Domain: {cynefin_domain}]</span> <span style="color: #34d399;">[{ooda_str}]</span><br/>{desc}{research_html}{cynefin_reason}{ooda_details_html}'
         
         subs = subs_by_parent.get(name, [])
         if subs:
             html += '\n                <ul class="sub-node-list">\n'
             for s in subs:
                 s_name, s_desc, s_ts, _ = s
-                s_cynefin = cynefin_map.get(s_name, "Not Assessed")
-                s_ooda = ooda_map.get(s_name, {"count": 0, "status": "None"})
+                s_cyn_info = cynefin_map.get(s_name, {"domain": "Not Assessed", "reason": ""})
+                s_cynefin = s_cyn_info.get("domain", "Not Assessed")
+                s_cynefin_reason = f"<br/><span style='font-size: 0.9em; color: #94a3b8;'>{s_cyn_info.get('reason', '')}</span>" if s_cyn_info.get("reason") else ""
+                
+                s_ooda = ooda_map.get(s_name, {"count": 0, "status": "None", "details": {}})
+                sd = s_ooda.get("details", {})
+                s_ooda_details_html = ""
+                if sd:
+                    s_ooda_details_html = f"<div style='margin-top: 8px; font-size: 0.9em; border-left: 2px solid #34d399; padding-left: 8px; background: #0f172a;'><span style='color: #94a3b8;'>Obs:</span> {sd.get('obs')}<br/><span style='color: #94a3b8;'>Ori:</span> {sd.get('ori')}<br/><span style='color: #94a3b8;'>Dec:</span> {sd.get('dec')}<br/><span style='color: #94a3b8;'>Act:</span> {sd.get('act')}</div>"
+                
                 s_ooda_str = f"OODA Loops: {s_ooda['count']} | Status: {s_ooda['status']}"
-                html += f'                    <li><strong>{s_name.replace("_", " ").title()}</strong> ({s_ts}) <span style="color: #60a5fa;">[Domain: {s_cynefin}]</span> <span style="color: #34d399;">[{s_ooda_str}]</span><br/>{s_desc}</li>\n'
+                html += f'                    <li><strong>{s_name.replace("_", " ").title()}</strong> ({s_ts}) <span style="color: #60a5fa;">[Domain: {s_cynefin}]</span> <span style="color: #34d399;">[{s_ooda_str}]</span><br/>{s_desc}{s_cynefin_reason}{s_ooda_details_html}</li>\n'
             html += '                </ul>\n'
             
         html += '            </li>\n'
