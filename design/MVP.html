@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MVP Scope & Relations</title>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+    </script>
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: sans-serif; padding: 2rem; }
+        .card { background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem; overflow-x: auto; }
+        h1, h2 { margin-top: 0; }
+        .category-list { list-style: none; padding: 0; }
+        .category-list > li { margin-bottom: 2rem; padding: 1.5rem; border-left: 4px solid #475569; background: #1e293b; border-radius: 4px; }
+        .item-list { list-style: none; padding-left: 0; margin-top: 1rem; }
+        .item-list > li { border-left: 2px dashed #6366f1; padding: 1rem; margin-bottom: 1rem; background: #0f172a; border-radius: 4px; }
+        .timeline-badge { background: #2563eb; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: bold; margin-left: 1rem; }
+        .mermaid-container { text-align: center; margin-bottom: 3rem; background: #1e293b; padding: 2rem; border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <h1>Intent Driven Swarm Commander - MVP Scope</h1>
+    <p>This document visualizes the Minimum Viable Product (MVP) scope derived from the Long Term Vision (LTV), focusing on foundational prerequisites and Q1/Q2 2026 deliverables.</p>
+
+    <div class="mermaid-container">
+        <h2>Architecture & Dependencies</h2>
+        <div class="mermaid">
+graph TD
+    subgraph MVP["MVP Scope Overview"]
+        Core[Intent Driven Swarm Commander]
+        Core --> MCP_Integration_Standard[MCP_Integration_Standard]
+        MCP_Integration_Standard --> MCP_Gateway_Architecture["MCP_Gateway_Architecture<br/><i>(Q1-Q2 2026)</i>"]
+        MCP_Integration_Standard --> OAuth21_NHI_Identity["OAuth21_NHI_Identity<br/><i>(Q1 2026)</i>"]
+        MCP_Integration_Standard --> MCP_Registry_Discovery["MCP_Registry_Discovery<br/><i>(Q2-Q3 2026)</i>"]
+        MCP_Integration_Standard --> EU_AI_Act_Compliance_Gate["EU_AI_Act_Compliance_Gate<br/><i>(Q2-Q3 2026)</i>"]
+        MCP_Integration_Standard --> MCP_Gateway_Auth_Gateway["MCP_Gateway_Auth_Gateway<br/><i>(Prerequisite/Foundational)</i>"]
+        Core --> Verification_1_Constraint_Graph[Verification_1_Constraint_Graph]
+        Verification_1_Constraint_Graph --> SORA25_Ontology_Formalization["SORA25_Ontology_Formalization<br/><i>(Q4 2026)</i>"]
+        Verification_1_Constraint_Graph --> SORA25_Machine_Readable_Encoding["SORA25_Machine_Readable_Encoding<br/><i>(Prerequisite/Foundational)</i>"]
+        Core --> MCP_Gateway_Auth_Gateway[MCP_Gateway_Auth_Gateway]
+        MCP_Gateway_Auth_Gateway --> Enterprise_Managed_Authorization_EMA["Enterprise_Managed_Authorization_EMA<br/><i>(Q1-Q2 2026)</i>"]
+        MCP_Gateway_Auth_Gateway --> JIT_Ephemeral_Agent_Identity["JIT_Ephemeral_Agent_Identity<br/><i>(Q1 2026)</i>"]
+        Core --> EMA_JIT_Identity_Infrastructure[EMA_JIT_Identity_Infrastructure]
+        EMA_JIT_Identity_Infrastructure --> Okta_Entra_IdP_MCP_Integration["Okta_Entra_IdP_MCP_Integration<br/><i>(Q1 2026)</i>"]
+        EMA_JIT_Identity_Infrastructure --> Britive_JIT_Access_Elevation["Britive_JIT_Access_Elevation<br/><i>(Q1 2026)</i>"]
+        Core --> IdP_EMA_JIT_Operational[IdP_EMA_JIT_Operational]
+        IdP_EMA_JIT_Operational --> Scope_Based_Tool_Loading_RBAC["Scope_Based_Tool_Loading_RBAC<br/><i>(Q1 2026)</i>"]
+        IdP_EMA_JIT_Operational --> HITL_Elicitation_API_Critical_Actions["HITL_Elicitation_API_Critical_Actions<br/><i>(Q1-Q2 2026)</i>"]
+        Core --> GRC_Auto_Calculation_Live[GRC_Auto_Calculation_Live]
+        GRC_Auto_Calculation_Live --> Remote_ID_UTM_Integration["Remote_ID_UTM_Integration<br/><i>(Q3-Q4 2026)</i>"]
+        Core --> HITL_Elicitation_Operational[HITL_Elicitation_Operational]
+        HITL_Elicitation_Operational --> Policy_as_Code_HITL_Enforcement["Policy_as_Code_HITL_Enforcement<br/><i>(Q2 2026)</i>"]
+        HITL_Elicitation_Operational --> Durable_Approval_Gates_Long_Missions["Durable_Approval_Gates_Long_Missions<br/><i>(Q2 2026)</i>"]
+        Core --> Neuro_Symbolic_Verification[Neuro_Symbolic_Verification]
+        Neuro_Symbolic_Verification --> NSVIF_CSP_Solver_Deployment["NSVIF_CSP_Solver_Deployment<br/><i>(Prerequisite/Foundational)</i>"]
+        Core --> Verification_3_MINT_Integration[Verification_3_MINT_Integration]
+        Verification_3_MINT_Integration --> MINT_UAV_Simulation_Validation["MINT_UAV_Simulation_Validation<br/><i>(Prerequisite/Foundational)</i>"]
+    end
+    classDef core fill:#2563eb,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef cat fill:#475569,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef item fill:#1e293b,stroke:#94a3b8,stroke-width:1px,color:#e2e8f0;
+    class Core core;
+    class MCP_Integration_Standard cat;
+    class MCP_Gateway_Architecture item;
+    class OAuth21_NHI_Identity item;
+    class MCP_Registry_Discovery item;
+    class EU_AI_Act_Compliance_Gate item;
+    class MCP_Gateway_Auth_Gateway item;
+    class Verification_1_Constraint_Graph cat;
+    class SORA25_Ontology_Formalization item;
+    class SORA25_Machine_Readable_Encoding item;
+    class MCP_Gateway_Auth_Gateway cat;
+    class Enterprise_Managed_Authorization_EMA item;
+    class JIT_Ephemeral_Agent_Identity item;
+    class EMA_JIT_Identity_Infrastructure cat;
+    class Okta_Entra_IdP_MCP_Integration item;
+    class Britive_JIT_Access_Elevation item;
+    class IdP_EMA_JIT_Operational cat;
+    class Scope_Based_Tool_Loading_RBAC item;
+    class HITL_Elicitation_API_Critical_Actions item;
+    class GRC_Auto_Calculation_Live cat;
+    class Remote_ID_UTM_Integration item;
+    class HITL_Elicitation_Operational cat;
+    class Policy_as_Code_HITL_Enforcement item;
+    class Durable_Approval_Gates_Long_Missions item;
+    class Neuro_Symbolic_Verification cat;
+    class NSVIF_CSP_Solver_Deployment item;
+    class Verification_3_MINT_Integration cat;
+    class MINT_UAV_Simulation_Validation item;
+        </div>
+    </div>
+
+    <h2>Detailed MVP Components</h2>
+    <ul class="category-list">
+        <li>
+            <h3>MCP_Integration_Standard</h3>
+            <ul class="item-list">
+                <li>
+                    <h4>MCP_Gateway_Architecture <span class="timeline-badge">Q1-Q2 2026</span></h4>
+                    <p>Deploying a centralized MCP Gateway as the governed control plane for all agent-to-tool interactions. Acts as a chokepoint for policy enforcement, audit logging, and RBAC/ABAC access control. Required prerequisite before MCP_Integration_Standard can be called production-grade.</p>
+                </li>
+                <li>
+                    <h4>OAuth21_NHI_Identity <span class="timeline-badge">Q1 2026</span></h4>
+                    <p>Implementing OAuth 2.1 with Dynamic Client Registration (DCR) and Resource Indicators (RFC 8707) specifically for Non-Human Identities (AI agents). Every agent must have a cryptographically verified identity with per-action runtime authorization. Pre-requisite for secure MCP in enterprise.</p>
+                </li>
+                <li>
+                    <h4>MCP_Registry_Discovery <span class="timeline-badge">Q2-Q3 2026</span></h4>
+                    <p>Adopting MCP Server Cards and the MCP Registry ecosystem for capability discovery without active connections. Enables modular, reusable microservice discovery and supply chain security via cryptographic server signatures. Required for eliminating brittle custom integrations.</p>
+                </li>
+                <li>
+                    <h4>EU_AI_Act_Compliance_Gate <span class="timeline-badge">Q2-Q3 2026</span></h4>
+                    <p>Establishing mandatory Human-in-the-Loop (HITL) approval gates and automated observability/audit logging for all agentic actions, driven by EU AI Act full enforcement (August 2026). Non-compliance blocks production MCP deployment in EU regulatory scope.</p>
+                </li>
+                <li>
+                    <h4>MCP_Gateway_Auth_Gateway <span class="timeline-badge">Prerequisite/Foundational</span></h4>
+                    <p>The critical gateway where MCP infrastructure is secured with OAuth 2.1 + NHI identity, RBAC/ABAC policy enforcement, and the MCP Registry is operational. Production MCP cannot proceed without this auth gateway being established. Discovered prerequisite to MCP_Integration_Standard.</p>
+                </li>
+            </ul>
+        </li>
+        <li>
+            <h3>Verification_1_Constraint_Graph</h3>
+            <ul class="item-list">
+                <li>
+                    <h4>SORA25_Ontology_Formalization <span class="timeline-badge">Q4 2026</span></h4>
+                    <p>Encoding SORA 2.5 (EASA/JARUS Specific Operations Risk Assessment, ED Decision 2025/018/R) UAS operational safety objectives into machine-readable ontologies for runtime constraint enforcement. Foundational prerequisite for the Constraint Graph node. Enables automated risk determination and constraint-based planning.</p>
+                </li>
+                <li>
+                    <h4>SORA25_Machine_Readable_Encoding <span class="timeline-badge">Prerequisite/Foundational</span></h4>
+                    <p>The milestone where SORA 2.5 UAS operational safety rules (EASA ED Decision 2025/018/R) are fully encoded as machine-readable ontologies. Prerequisite to building the Constraint Graph. Required before any semantic runtime verification of drone operations can occur.</p>
+                </li>
+            </ul>
+        </li>
+        <li>
+            <h3>MCP_Gateway_Auth_Gateway</h3>
+            <ul class="item-list">
+                <li>
+                    <h4>Enterprise_Managed_Authorization_EMA <span class="timeline-badge">Q1-Q2 2026</span></h4>
+                    <p>Implementing Enterprise-Managed Authorization (EMA) with Identity Assertion JWTs (ID-JAG) that bypass per-server OAuth prompts. Central IdP issues authorizations for all MCP agents, eliminating per-server consent friction while maintaining audit trails. Critical gateway prerequisite for MCP_Gateway_Auth_Gateway.</p>
+                </li>
+                <li>
+                    <h4>JIT_Ephemeral_Agent_Identity <span class="timeline-badge">Q1 2026</span></h4>
+                    <p>Deploying Just-in-Time (JIT) ephemeral agent identity lifecycle management. Agents receive short-lived signed credentials for each task session; identity is automatically retired post-completion. Prevents credential sprawl in multi-swarm environments where hundreds of drone control agents coexist.</p>
+                </li>
+            </ul>
+        </li>
+        <li>
+            <h3>EMA_JIT_Identity_Infrastructure</h3>
+            <ul class="item-list">
+                <li>
+                    <h4>Okta_Entra_IdP_MCP_Integration <span class="timeline-badge">Q1 2026</span></h4>
+                    <p>Integrating enterprise IdPs (Okta, Microsoft Entra) with MCP EMA flow using ID-JAG JWT grants. Establishes the identity governance backbone for all drone swarm agents. Centralized policy management eliminates per-server OAuth sprawl and provides automated revocation upon task completion.</p>
+                </li>
+                <li>
+                    <h4>Britive_JIT_Access_Elevation <span class="timeline-badge">Q1 2026</span></h4>
+                    <p>Deploying JIT access elevation pattern (Britive/Akeyless pattern) where drone swarm agents receive task-scoped, time-bound tokens that auto-expire. Eliminates credential sprawl in multi-swarm environments. Required before EMA_JIT_Identity_Infrastructure can be considered production-safe.</p>
+                </li>
+            </ul>
+        </li>
+        <li>
+            <h3>IdP_EMA_JIT_Operational</h3>
+            <ul class="item-list">
+                <li>
+                    <h4>Scope_Based_Tool_Loading_RBAC <span class="timeline-badge">Q1 2026</span></h4>
+                    <p>Implementing scope-based tool loading so AI swarm agents only receive MCP tool access strictly aligned with authenticated user privileges. Follows least-privilege principle at tool granularity. Prevents unauthorized access to destructive operations (e.g., mass abort, swarm redirect) by lower-privilege agents.</p>
+                </li>
+                <li>
+                    <h4>HITL_Elicitation_API_Critical_Actions <span class="timeline-badge">Q1-Q2 2026</span></h4>
+                    <p>Implementing mandatory Human-in-the-Loop (HITL) elicitation API for high-impact or irreversible swarm actions (mass abort, ROE changes, swarm redirect). MCP elicitation API routes these decisions to human commander confirmation UI before execution. EU AI Act compliance requirement.</p>
+                </li>
+            </ul>
+        </li>
+        <li>
+            <h3>GRC_Auto_Calculation_Live</h3>
+            <ul class="item-list">
+                <li>
+                    <h4>Remote_ID_UTM_Integration <span class="timeline-badge">Q3-Q4 2026</span></h4>
+                    <p>Mandatory Remote ID broadcasting integration with UTM systems for real-time airspace deconfliction. Regulatory prerequisite for BVLOS swarm operations. Establishes the digital airspace identity layer required before autonomous swarm missions can be authorized by NAAs.</p>
+                </li>
+            </ul>
+        </li>
+        <li>
+            <h3>HITL_Elicitation_Operational</h3>
+            <ul class="item-list">
+                <li>
+                    <h4>Policy_as_Code_HITL_Enforcement <span class="timeline-badge">Q2 2026</span></h4>
+                    <p>Implementing Policy-as-Code to enforce that specific swarm tool calls (ROE changes, mass abort, swarm redirect) always trigger HITL approval checks via MCP elicitation configureElicitationHandlers(). Ensures governance-by-design rather than relying on agent discretion for safety-critical decisions.</p>
+                </li>
+                <li>
+                    <h4>Durable_Approval_Gates_Long_Missions <span class="timeline-badge">Q2 2026</span></h4>
+                    <p>Implementing durable workflow gates (waitForApproval() primitives on persistent task state) for long-running or multi-day swarm mission plans. Agent state persists without active connection; human commander can approve/reject days later. Critical for strategic-level SMEAC operations with extended planning cycles.</p>
+                </li>
+            </ul>
+        </li>
+        <li>
+            <h3>Neuro_Symbolic_Verification</h3>
+            <ul class="item-list">
+                <li>
+                    <h4>NSVIF_CSP_Solver_Deployment <span class="timeline-badge">Prerequisite/Foundational</span></h4>
+                    <p>The milestone where NSVIF constraint satisfaction solvers are deployed in the production pipeline as a formal verification layer for all LLM-generated outputs. Gateway between probabilistic generation and deterministic safety enforcement. Discovered prerequisite to Neuro_Symbolic_Verification.</p>
+                </li>
+            </ul>
+        </li>
+        <li>
+            <h3>Verification_3_MINT_Integration</h3>
+            <ul class="item-list">
+                <li>
+                    <h4>MINT_UAV_Simulation_Validation <span class="timeline-badge">Prerequisite/Foundational</span></h4>
+                    <p>The milestone where MINT neuro-symbolic tree planning is validated in high-fidelity UAV simulations (NVIDIA Isaac Sim) and field deployments before integration with the SMEAC Intent Commander. Discovered prerequisite to Verification_3_MINT_Integration.</p>
+                </li>
+            </ul>
+        </li>
+    </ul>
+</body>
+</html>
