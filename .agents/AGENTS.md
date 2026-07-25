@@ -58,3 +58,7 @@ These rules apply to all AI agents working within this repository.
 - Call the `navigate_ooda.py` script located in `skills/ooda-loop-navigator/scripts/` to log your observations, orientations, decisions, and actions.
 - All OODA loops must be explicitly tied to a predefined target Node Point from the Long Term Vision.
 - Do not make massive, irreversible architectural decisions within an OODA loop; focus on micro-hypotheses and short-term iterations (e.g., PoCs).
+
+## Script Organization Rules
+
+- **Script Location**: AI Agents MUST create any new standalone or utility scripts in the `scripts/` directory at the project root. Do not create Python scripts or other executable scripts directly in the project root directory.
