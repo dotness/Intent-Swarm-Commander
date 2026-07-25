@@ -1,0 +1,70 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: isc
+      POSTGRES_PASSWORD: isc_dev_password
+      POSTGRES_DB: isc
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U isc"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── Temporal Server ─────────────────────────────────────────
+  temporal:
+    image: temporalio/auto-setup:latest
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: isc
+      POSTGRES_PWD: isc_dev_password
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+    ports:
+      - "7233:7233"   # gRPC
+      - "8233:8233"   # HTTP (Web UI API)
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Temporal Web UI ─────────────────────────────────────────
+  temporal-ui:
+    image: temporalio/ui:latest
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: "http://localhost:3000"
+    ports:
+      - "8080:8080"
+    depends_on:
+      - temporal
+
+  # ── ISC API (Backend uService) ──────────────────────────────
+  isc-api:
+    build:
+      context: ../..
+      dockerfile: src/docker/Dockerfile.api
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://isc:isc_dev_password@postgres:5432/isc"
+      TEMPORAL_HOST: temporal
+      TEMPORAL_PORT: 7233
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    volumes:
+      - ../../src:/app/src
+
+volumes:
+  pg_data:

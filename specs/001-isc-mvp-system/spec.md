@@ -112,7 +112,7 @@ The commander or an automated orchestrator calls the Central Provisioning API to
 
 ### User Story 7 — Autonomous Object Identification and Targeting (Priority: P2)
 
-The drone, equipped with a Raspberry Pi 5 controller, uses its onboard camera and YOLO-E with OpenCV to autonomously identify an ordered target object and navigate towards it without constant human piloting.
+The drone, equipped with a Raspberry Pi 5 controller, uses its onboard camera and YOLO-E with OpenCV to autonomously identify an ordered target object (limited to standard classes: 'person', 'car', 'truck', 'bus') and navigate towards it without constant human piloting.
 
 **Why this priority**: Enables autonomous edge execution, which is critical for swarm resilience when connectivity to the Command Post is degraded.
 
@@ -155,7 +155,7 @@ The drone, equipped with a Raspberry Pi 5 controller, uses its onboard camera an
 - **FR-016**: The dedicated Swarm instance MUST expose its own independent API that is dynamically registered with and routed through the central MCP Auth Gateway for all subsequent SMEAC ingestion and swarm commands.
 - **FR-017**: The drone hardware architecture MUST consist of a drone platform and a Raspberry Pi 5 acting as the primary onboard drone controller (brain).
 - **FR-018**: The Raspberry Pi 5 controller MUST run OpenCV and YOLO-E for real-time visual processing.
-- **FR-019**: The drone MUST be capable of autonomous object identification using the onboard YOLO-E model.
+- **FR-019**: The drone MUST be capable of autonomous object identification using the onboard YOLO-E model for the classes 'person', 'car', 'truck', and 'bus'.
 - **FR-020**: The drone MUST be capable of autonomously navigating to a target object once it has been positively identified by YOLO-E.
 
 ### Key Entities

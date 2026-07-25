@@ -1,0 +1,15 @@
+# Backend
+fastapi>=0.115,<1
+uvicorn[standard]>=0.30,<1
+sqlalchemy[asyncio]>=2.0,<3
+asyncpg>=0.29,<1
+pydantic>=2.7,<3
+pydantic-ai>=0.1,<1
+temporalio>=1.7,<2
+python-jose[cryptography]>=3.3,<4
+docker>=7.0,<8
+
+# Edge (Raspberry Pi 5) — optional, install on edge nodes only
+# opencv-python-headless>=4.9,<5
+# ultralytics>=8.2,<9
+# mavsdk>=2.0,<3
