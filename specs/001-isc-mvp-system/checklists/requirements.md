@@ -31,7 +31,4 @@
 
 ## Notes
 
-- All checklist items passed on first iteration.
-- No [NEEDS CLARIFICATION] markers were needed — the design documents, MVP.md, and LTV database provided sufficient detail to make informed decisions for all aspects.
-- Scope explicitly bounded: Remote ID/UTM, MCP Registry, MINT planning, and full SORA 2.5 encoding are documented as out-of-scope in Assumptions.
-- Assumptions section documents all reasonable defaults chosen (simulated drones, single commander, minimal constraint rule set, mockable IdP).
+- Checked as passed. The newly added requirements for Raspberry Pi 5, YOLO-E, and OpenCV introduce specific hardware and software components, but they are defined as architectural requirements (Key Entities) necessary for edge autonomy rather than implementation details of the commander system itself.
