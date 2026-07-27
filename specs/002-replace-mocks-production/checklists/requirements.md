@@ -1,8 +1,8 @@
-# Specification Quality Checklist: Intent Swarm Commander — MVP System
+# Specification Quality Checklist: Replace Mocks, Stubs & Hardcodes
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-07-24
-**Feature**: [spec.md](file:///home/remi/Projects/Intent-Swarm-Commander/specs/001-isc-mvp-system/spec.md)
+**Created**: 2026-07-27
+**Feature**: [spec.md](file:///home/remi/Projects/Intent-Swarm-Commander/specs/002-replace-mocks-production/spec.md)
 
 ## Content Quality
 
@@ -31,4 +31,8 @@
 
 ## Notes
 
-- Checked as passed. The newly added requirements for Raspberry Pi 5, YOLO-E, and OpenCV introduce specific hardware and software components, but they are defined as architectural requirements (Key Entities) necessary for edge autonomy rather than implementation details of the commander system itself.
+- All 20 functional requirements map directly to identified mocks/stubs/hardcodes in the codebase.
+- 8 user stories cover all three system layers: frontend dashboard (P1), microservices backend (P1-P2), and edge services (P2-P3).
+- Priorities reflect security-first approach: authentication and persistence (P1) before operational features (P2) before edge hardware (P3).
+- Simulation mode for edge components is addressed pragmatically — retain as explicit opt-in, not silent fallback.
+- No [NEEDS CLARIFICATION] markers were needed; the todo file provided sufficient detail and reasonable defaults were applied for any gaps.

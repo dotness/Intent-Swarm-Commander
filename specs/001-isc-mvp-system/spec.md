@@ -62,6 +62,11 @@ Every Command Agent action passes through the MCP Auth Gateway, which validates 
 
 Before any command reaches the Swarm Pool, it passes through the Safety Verification Layer where constraint solvers validate the command against safety rules. Commands that violate safety constraints are blocked and the commander is notified with the specific constraint violation.
 
+The initial minimal rule set for MVP includes:
+1. **Altitude Limits**: Commands must not specify altitudes below 10m or above 400m.
+2. **Geofencing**: Target coordinates must not fall within defined "Restricted Airspace" polygons.
+3. **Mission Feasibility**: Mission duration estimates must not exceed standard battery limits (e.g., >30 mins).
+
 **Why this priority**: Without formal verification, LLM-generated commands could issue unsafe drone operations. Ranked P2 because the verification layer can initially operate with a minimal rule set and be expanded iteratively.
 
 **Independent Test**: Can be tested by submitting commands that intentionally violate safety constraints (e.g., altitude exceeding limits, flight into restricted airspace) and verifying they are rejected with clear violation messages.
@@ -105,6 +110,21 @@ The commander or an automated orchestrator calls the Central Provisioning API to
 
 ---
 
+### User Story 7 — Autonomous Object Identification and Targeting (Priority: P2)
+
+The drone, equipped with a Raspberry Pi 5 controller, uses its onboard camera and YOLO-E with OpenCV to autonomously identify an ordered target object (limited to standard classes: 'person', 'car', 'truck', 'bus') and navigate towards it without constant human piloting.
+
+**Why this priority**: Enables autonomous edge execution, which is critical for swarm resilience when connectivity to the Command Post is degraded.
+
+**Independent Test**: Can be tested by ordering the drone to find a specific object type (e.g., "vehicle") and observing if it successfully identifies it via YOLO-E and autonomously flies towards it.
+
+**Acceptance Scenarios**:
+
+1. **Given** the drone is airborne and receives a command to identify a target, **When** the camera captures the target object, **Then** YOLO-E correctly identifies it and logs the detection.
+2. **Given** the target is identified, **When** the drone is authorized to approach, **Then** it autonomously navigates to the target's coordinates using onboard Raspberry Pi 5 processing.
+
+---
+
 ### Edge Cases
 
 - What happens when the MCP Gateway is unreachable? The system must fail closed — no commands bypass the gateway. The commander sees a clear "Gateway Unavailable" status and all pending actions queue locally.
@@ -133,6 +153,10 @@ The commander or an automated orchestrator calls the Central Provisioning API to
 - **FR-014**: System MUST expose a Central Provisioning API allowing users to request the creation of a new Swarm.
 - **FR-015**: System MUST dynamically spawn a dedicated POD/Docker instance for each created Swarm to guarantee performance isolation.
 - **FR-016**: The dedicated Swarm instance MUST expose its own independent API that is dynamically registered with and routed through the central MCP Auth Gateway for all subsequent SMEAC ingestion and swarm commands.
+- **FR-017**: The drone hardware architecture MUST consist of a drone platform and a Raspberry Pi 5 acting as the primary onboard drone controller (brain).
+- **FR-018**: The Raspberry Pi 5 controller MUST run OpenCV and YOLO-E for real-time visual processing.
+- **FR-019**: The drone MUST be capable of autonomous object identification using the onboard YOLO-E model for the classes 'person', 'car', 'truck', and 'bus'.
+- **FR-020**: The drone MUST be capable of autonomously navigating to a target object once it has been positively identified by YOLO-E.
 
 ### Key Entities
 
@@ -144,6 +168,8 @@ The commander or an automated orchestrator calls the Central Provisioning API to
 - **Audit Event**: An immutable log entry recording any significant system action — agent requests, HITL decisions, gateway authorizations, constraint check results, and swarm command executions.
 - **Central Provisioning API**: The control plane interface responsible for orchestrating the lifecycle (spawning/terminating) of Dedicated Swarm Instances.
 - **Dedicated Swarm Instance**: A dynamically spawned POD/Docker container providing dedicated compute resources and an isolated API specifically for managing a single swarm.
+- **Raspberry Pi 5 Controller**: The onboard computational brain of the drone responsible for edge AI execution.
+- **YOLO-E**: The embedded object detection model running on the Raspberry Pi 5 to identify targets in real-time.
 
 ## Success Criteria *(mandatory)*
 
@@ -156,12 +182,14 @@ The commander or an automated orchestrator calls the Central Provisioning API to
 - **SC-005**: Commanders can view the current status of all active agents, their authentication state, and RBAC scope at a glance on the dashboard.
 - **SC-006**: The system defaults to safe failure modes (fail closed) when any security or verification component is unavailable, with zero commands bypassing security gates during outages.
 - **SC-007**: Pending HITL approvals are persisted and remain accessible for commander review even if the commander's session is interrupted and resumed later.
+- **SC-008**: The onboard Raspberry Pi 5 correctly identifies target objects via YOLO-E with at least 80% confidence in field tests.
+- **SC-009**: Upon target identification, the drone successfully navigates to within 5 meters of the target autonomously.
 
 ## Assumptions
 
 - **Target Users**: Military commanders with domain expertise in SMEAC order format operating from a desktop or field workstation with a modern web browser.
 - **Connectivity**: The commander workstation has reliable network connectivity to the Command Post edge server. Intermittent connectivity between edge and tactical field is expected but out of MVP scope for resilience handling.
-- **Drone Simulation**: The MVP exclusively uses a software-based drone simulation setup. Physical drone integration is strictly out of scope for the current MVP, which focuses on validating the end-to-end pipeline from intent to simulated execution.
+- **Drone Hardware**: The MVP includes physical integration with a drone platform and a Raspberry Pi 5 controller, transitioning away from purely software-based simulation for the edge execution nodes.
 - **Authentication Infrastructure**: An external identity provider (IdP) is available or can be mocked for MVP purposes. Full enterprise IdP integration (Okta/Entra) is a fast-follow concern.
 - **Constraint Rule Set**: The Safety Verification Layer operates with a minimal, manually defined rule set for MVP. Full SORA 2.5 ontology encoding and NSVIF solver deployment are post-MVP milestones.
 - **Multi-Commander Operations**: MVP supports multiple concurrent commander sessions. SMEAC orders from multiple commanders targeting the same swarm are queued and processed sequentially.

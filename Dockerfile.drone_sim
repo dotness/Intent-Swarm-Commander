@@ -1,0 +1,50 @@
+FROM osrf/ros:humble-desktop
+
+# Set environment to non-interactive to avoid timezone prompts during build
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install core dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    wget \
+    curl \
+    python3-pip \
+    python3-rosdep \
+    tmux \
+    nano \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Gazebo Harmonic (gz-harmonic)
+RUN curl -fsSL https://packages.osrfoundation.org/gazebo.gpg --output /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null \
+    && apt-get update && apt-get install -y gz-harmonic \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone PX4 Autopilot
+WORKDIR /opt
+RUN git clone https://github.com/PX4/PX4-Autopilot.git --recursive -b release/1.14
+
+# Install PX4 dependencies via their setup script
+WORKDIR /opt/PX4-Autopilot
+RUN bash ./Tools/setup/ubuntu.sh --no-nuttx --no-sim-tools
+
+# Build Micro XRCE-DDS Agent (Bridge between ROS 2 and PX4)
+WORKDIR /opt
+RUN git clone https://github.com/eProsima/Micro-XRCE-DDS-Agent.git \
+    && cd Micro-XRCE-DDS-Agent \
+    && mkdir build && cd build \
+    && cmake .. \
+    && make \
+    && make install \
+    && ldconfig /usr/local/lib/
+
+# Setup working directory for the user's custom ROS2 nodes
+WORKDIR /workspace
+
+# Add source command to bashrc
+RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+
+COPY scripts/entrypoint_drone.sh /opt/entrypoint_drone.sh
+RUN chmod +x /opt/entrypoint_drone.sh
+
+CMD ["/opt/entrypoint_drone.sh"]

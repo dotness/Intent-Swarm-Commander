@@ -1,0 +1,26 @@
+FROM ros:humble
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+# Since we are running edge services too, let's install the edge requirements
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir opencv-python-headless ultralytics mavsdk
+
+# Copy application source
+COPY src/ ./src/
+
+# Make sure PYTHONPATH includes src
+ENV PYTHONPATH=/app/src:/app
+
+# Default command for the backend API
+CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && uvicorn src.uservice.main:app --host 0.0.0.0 --port 8000"]
