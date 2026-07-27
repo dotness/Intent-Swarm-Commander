@@ -1,0 +1,23 @@
+{
+  "zones": [
+    {
+      "id": "zone-1",
+      "name": "Downtown No-Fly Zone",
+      "active": true,
+      "altitude_min_m": 0,
+      "altitude_max_m": 500,
+      "polygon": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-74.01, 40.71],
+            [-73.99, 40.71],
+            [-73.99, 40.73],
+            [-74.01, 40.73],
+            [-74.01, 40.71]
+          ]
+        ]
+      }
+    }
+  ]
+}

@@ -9,6 +9,7 @@ from src.uservice.base.facade.base import DomainFacade
 from src.uservice.smeac.models.contract.schemas import SmeacOrderCreateRequest
 from src.uservice.operation.facade import start_workflow
 from src.uservice.smeac.operations.process import ProcessSmeacInput, ProcessSmeacWorkflow
+from src.uservice.smeac.models.storage.smeac import SmeacOrder
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +18,8 @@ class SmeacFacade(DomainFacade):
 
     async def submit_smeac_order(self, swarm_id: uuid.UUID, body: SmeacOrderCreateRequest) -> dict[str, Any]:
         """Submit a SMEAC order and launch the Temporal workflow."""
-        # 1. Enforce RBAC (Placeholder for permission service check)
-        # await self.permissions.require_access("smeac:create")
+        # 1. Enforce RBAC
+        self.require_scope("smeac:create")
         
         order_id = uuid.uuid4()
         now = datetime.now(timezone.utc)
@@ -31,10 +32,18 @@ class SmeacFacade(DomainFacade):
             "command_signal": "parsed" if body.command_signal else "not_provided",
         }
 
-        # In integration phase, we would persist the record using self.session
-        # order_record = SmeacOrder(id=order_id, swarm_instance_id=swarm_id, ...)
-        # self.session.add(order_record)
-        # await self.session.flush()
+        order_record = SmeacOrder(
+            id=order_id,
+            commander_id=self.user.get("sub", "unknown"),
+            swarm_instance_id=swarm_id,
+            situation=body.situation,
+            mission=body.mission,
+            execution=body.execution,
+            admin_logistics=body.admin_logistics,
+            command_signal=body.command_signal,
+        )
+        self.session.add(order_record)
+        await self.session.flush()
         
         # 2. Schedule workflow via Operation wrapper
         wf_input = ProcessSmeacInput(
@@ -70,17 +79,16 @@ class SmeacFacade(DomainFacade):
     async def get_order_status(self, swarm_id: uuid.UUID, order_id: uuid.UUID) -> dict[str, Any]:
         """Get the status of a submitted SMEAC order."""
         # 1. Enforce RBAC
-        # await self.permissions.require_access("smeac:read")
+        self.require_scope("smeac:read")
         
         # 2. Fetch from DB
-        # record = await self.session.get(SmeacOrder, order_id)
-        # if not record:
-        #     raise ResourceDoesNotExist("Order not found")
+        record = await self.session.get(SmeacOrder, order_id)
+        if not record:
+            raise ValueError("Order not found")
         
-        # Mock response for now
         return {
-            "order_id": order_id,
-            "status": "submitted",
+            "order_id": record.id,
+            "status": record.status,
             "commands": [],
             "constraint_violations": [],
         }

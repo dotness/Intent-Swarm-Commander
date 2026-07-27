@@ -8,6 +8,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+import httpx
 
 from src.uservice.base.models.api.response import Response
 from src.uservice.base.errors import ResourceDoesNotExist
@@ -118,3 +119,54 @@ async def delete_swarm(
         "status": record["status"],
         "message": "Swarm termination initiated. Pending orders will complete before shutdown.",
     }
+
+
+@router.get("/swarms/{swarm_id}/telemetry")
+async def get_swarm_telemetry(
+    request: Request,
+    swarm_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db),
+):
+    """Aggregate telemetry data for a swarm."""
+    user_context = request.state.auth_claims if hasattr(request.state, "auth_claims") else {"sub": "commander-default"}
+    facade = await SwarmFacade.create(session=session, user=user_context)
+
+    try:
+        record = await facade.get_swarm_details(swarm_id=swarm_id)
+    except ResourceDoesNotExist as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    endpoint_url = record.get("endpoint_url")
+    if not endpoint_url:
+        return {"drones": []}
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # We assume a single drone container per swarm for MVP
+            # and that endpoint_url points to it
+            res = await client.get(f"{endpoint_url}/telemetry", timeout=5.0)
+            res.raise_for_status()
+            telemetry_data = res.json()
+            
+            # Reformat to match the dashboard's expected 'drones' array
+            return {
+                "drones": [
+                    {
+                        "id": f"{swarm_id}-drone-1",
+                        "status": telemetry_data.get("status", "idle"),
+                        "battery_pct": telemetry_data.get("battery", 100),
+                        "position": {
+                            "lat": telemetry_data.get("position", {}).get("lat", 0),
+                            "lng": telemetry_data.get("position", {}).get("lon", 0),
+                            "alt_m": telemetry_data.get("position", {}).get("alt", 0)
+                        },
+                        "heading": telemetry_data.get("heading", 0),
+                        "speed": telemetry_data.get("speed", 0),
+                        "current_mission": telemetry_data.get("status", "idle")
+                    }
+                ]
+            }
+    except Exception as e:
+        logger.error("Failed to fetch telemetry for swarm %s: %s", swarm_id, e)
+        # Return empty list if we can't reach the drone
+        return {"drones": []}

@@ -29,14 +29,22 @@ async def swarm_proxy_middleware(request: Request, call_next: Callable) -> Respo
     swarm_id = parts[4]
 
     # In integration phase, we lookup the swarm's endpoint_url from the DB
-    from src.uservice.swarm.operations.create import _swarms
-    swarm_record = _swarms.get(swarm_id)
+    from src.uservice.database.engine import async_session
+    from src.uservice.swarm.models.storage.instance import SwarmInstance
+    import uuid
 
-    if not swarm_record or not swarm_record.get("endpoint_url"):
-        # For MVP, if there's no dynamic endpoint yet, let it fall through to local routes
-        return await call_next(request)
+    try:
+        swarm_uuid = uuid.UUID(swarm_id)
+    except ValueError:
+        return JSONResponse(status_code=404, content={"error": "Swarm not found or not available"})
 
-    target_url = swarm_record["endpoint_url"]
+    async with async_session() as session:
+        swarm_record = await session.get(SwarmInstance, swarm_uuid)
+
+    if not swarm_record or not swarm_record.endpoint_url:
+        return JSONResponse(status_code=404, content={"error": "Swarm not found or not available"})
+
+    target_url = swarm_record.endpoint_url
     # Reconstruct the proxied path
     # Example: target_url is http://swarm-1234:8000/api/v1/swarms/1234
     # We want to append the rest of the path, e.g., /orders

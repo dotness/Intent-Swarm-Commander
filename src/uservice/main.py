@@ -15,6 +15,7 @@ from src.uservice.database.engine import init_db
 from src.uservice.smeac.api.routes import router as smeac_router
 from src.uservice.hitl.api.routes import router as hitl_router
 from src.uservice.swarm.api.routes import router as swarm_router
+from src.uservice.security.routes import router as auth_router
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ app.add_middleware(BaseHTTPMiddleware, dispatch=swarm_proxy_middleware)
 app.add_middleware(BaseHTTPMiddleware, dispatch=auth_gateway_middleware)
 
 
+app.include_router(auth_router, prefix="/api/v1")
 app.include_router(smeac_router, prefix="/api/v1")
 app.include_router(hitl_router, prefix="/api/v1")
 app.include_router(swarm_router, prefix="/api/v1")

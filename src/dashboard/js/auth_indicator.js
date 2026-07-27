@@ -8,10 +8,8 @@ function updateAuthIndicator() {
     const indicator = document.getElementById('auth-indicator');
     if (!indicator) return;
 
-    // MVP mock: just assume we have a commander token
-    // In full implementation, this checks the actual JIT/OAuth token
-    const isAuthenticated = true; 
-    const commanderId = "commander-default";
+    const isAuthenticated = window.authManager ? window.authManager.isAuthenticated() : false; 
+    const commanderId = window.authManager ? window.authManager.agentId : "Unknown";
 
     if (isAuthenticated) {
         indicator.innerHTML = `
@@ -38,3 +36,8 @@ function updateAuthIndicator() {
 window.AuthIndicator = {
     update: updateAuthIndicator
 };
+
+// Listen for auth changes
+window.addEventListener('auth-changed', () => {
+    updateAuthIndicator();
+});

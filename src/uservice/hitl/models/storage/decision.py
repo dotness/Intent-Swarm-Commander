@@ -3,7 +3,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy import Boolean, ForeignKey, String, Text, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.uservice.database.base import Base, UUIDMixin, TimestampMixin, PermissionMixin
@@ -28,3 +28,7 @@ class HitlDecision(UUIDMixin, TimestampMixin, PermissionMixin, Base):
     decision: Mapped[str] = mapped_column(String, nullable=False)
     rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     timeout_triggered: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    action_summary: Mapped[str] = mapped_column(String, nullable=False, default="")
+    timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=600)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    workflow_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

@@ -5,6 +5,7 @@ and classify target objects in real-time on the Raspberry Pi 5.
 """
 
 import logging
+import os
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,8 @@ class YoloEInference:
         List of Detection objects above the confidence threshold.
         """
         if not YOLO_AVAILABLE or self._model is None:
+            if os.environ.get("SIMULATION_MODE", "false").lower() != "true":
+                raise RuntimeError("YOLO model absent and SIMULATION_MODE is not true.")
             # Simulation mode: return empty detections
             logger.debug("Simulated inference — no detections")
             return []

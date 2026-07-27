@@ -74,7 +74,7 @@ async function submitDecision(choice) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer placeholder-token'
+                ...window.authManager.getAuthHeader()
             },
             body: JSON.stringify({
                 decision: choice,

@@ -8,6 +8,7 @@ pydantic-ai>=0.1,<1
 temporalio>=1.7,<2
 python-jose[cryptography]>=3.3,<4
 docker>=7.0,<8
+shapely>=2.0,<3
 
 # Edge (Raspberry Pi 5) — optional, install on edge nodes only
 # opencv-python-headless>=4.9,<5

@@ -34,6 +34,13 @@ class ProcessSmeacInput:
 class ProcessSmeacWorkflow:
     """Durable workflow that translates a SMEAC order into swarm commands."""
 
+    def __init__(self) -> None:
+        self.hitl_decision: dict | None = None
+
+    @workflow.signal(name="hitl_decision")
+    def on_hitl_decision(self, decision_data: dict) -> None:
+        self.hitl_decision = decision_data
+
     @workflow.run
     async def run(self, input: ProcessSmeacInput) -> dict:
         """Execute the SMEAC processing pipeline.
@@ -52,16 +59,33 @@ class ProcessSmeacWorkflow:
         commands = parse_result.get("commands", [])
 
         # Step 2: Safety Verification (Guardian Critic)
-        # Note: In production this would be an activity, but we will mock the safety check integration here
-        # based on the Guardian Critic implementation.
+        all_violations = []
         for cmd in commands:
-            # We would normally execute Guardian Critic activity here
-            pass
+            violations = await workflow.execute_activity(
+                "safety_check_activity",
+                cmd,
+                start_to_close_timeout=workflow.timedelta(seconds=10),
+            )
+            if violations:
+                all_violations.extend(violations)
+                
+        if all_violations:
+            logger.error("Safety checks failed: %s", all_violations)
+            return {"error": "Safety checks failed", "violations": all_violations}
 
         # Step 3: HITL Verification for High-Impact Actions
-        # We define a signal for HITL
-        hitl_approved = True
-        # Future: wait for signal if cmd['is_high_impact']
+        requires_hitl = any(cmd.get("is_high_impact", False) for cmd in commands)
+        
+        if requires_hitl:
+            self.hitl_decision = None
+            logger.info("Waiting for HITL approval for high-impact commands")
+            await workflow.wait_condition(lambda: self.hitl_decision is not None)
+            
+            if self.hitl_decision.get("decision") != "approved":
+                logger.error("HITL rejected the command: %s", self.hitl_decision)
+                return {"error": "HITL rejected", "rationale": self.hitl_decision.get("rationale")}
+            
+            logger.info("HITL approved the command")
 
         # Log audit events
         logger.info("Audit: Command Generation completed for order=%s", input.order_id)

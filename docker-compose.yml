@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: isc_postgres
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=isc_user
+      - POSTGRES_PASSWORD=isc_pass
+      - POSTGRES_DB=isc_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  temporal:
+    image: temporalio/auto-setup:1.24
+    container_name: isc_temporal
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=isc_user
+      - POSTGRES_PWD=isc_pass
+      - POSTGRES_SEEDS=localhost
+    depends_on:
+      - postgres
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: isc_backend
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://isc_user:isc_pass@localhost:5432/isc_db
+      - TEMPORAL_URL=localhost:7233
+    command: uvicorn src.uservice.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      - postgres
+      - temporal
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: isc_dashboard
+    network_mode: host
+    restart: unless-stopped
+    command: python -m http.server 8080 -d src/dashboard
+
+  edge_drone:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: isc_edge
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - SIMULATION_MODE=true
+    command: python -c "from src.edge.api.server import run_edge_server; run_edge_server(host='0.0.0.0', port=8090)"
+    depends_on:
+      - drone_sim
+
+  drone_sim:
+    build:
+      context: .
+      dockerfile: Dockerfile.drone_sim
+    container_name: autonomous_drone_env
+    network_mode: host
+    restart: unless-stopped
+    privileged: true
+    stdin_open: true
+    tty: true
+    environment:
+      - DISPLAY=${DISPLAY}
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY}
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
+      - PULSE_SERVER=${PULSE_SERVER}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all,graphics,display,compute,utility
+      - QT_X11_NO_MITSHM=1
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - /mnt/wslg:/mnt/wslg:rw
+      - ./Drone-Swarm/drone_workspace:/workspace:rw
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu, graphics, compute, utility]
+    # We will need to update the drone_sim command/entrypoint in a later task
+    command: /bin/bash
+
+volumes:
+  pgdata:

@@ -20,6 +20,7 @@ class SwarmFacade(DomainFacade):
         # await self.permissions.require_access("swarm:create")
         
         record = await provision_swarm(
+            session=self.session,
             name=body.name,
             drone_count=body.drone_count,
             created_by=self.user.get("sub", "commander-default"),
@@ -30,14 +31,14 @@ class SwarmFacade(DomainFacade):
         """List all swarm instances."""
         # await self.permissions.require_access("swarm:read")
         
-        swarms = await list_swarms()
+        swarms = await list_swarms(self.session)
         return swarms
 
     async def get_swarm_details(self, swarm_id: uuid.UUID) -> dict[str, Any]:
         """Get details of a specific swarm instance."""
         # await self.permissions.require_access("swarm:read")
         
-        record = await get_swarm(swarm_id)
+        record = await get_swarm(self.session, swarm_id)
         if record is None:
             raise ResourceDoesNotExist("Swarm not found")
         return record
@@ -47,7 +48,7 @@ class SwarmFacade(DomainFacade):
         # await self.permissions.require_access("swarm:delete")
         
         try:
-            record = await drain_swarm(swarm_id)
+            record = await drain_swarm(self.session, swarm_id)
         except KeyError:
             raise ResourceDoesNotExist("Swarm not found")
         return record
