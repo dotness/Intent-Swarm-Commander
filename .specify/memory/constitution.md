@@ -1,9 +1,9 @@
 <!--
 Sync Impact Report:
-- Version change: Initial Draft -> 1.0.0
-- Modified principles: Replaced template placeholders with Cone of Uncertainty Framework principles based on AGENTS.md rules.
-- Added sections: Verification & Architecture Standards
-- Removed sections: Template placeholder sections
+- Version change: 1.0.0 -> 1.1.0
+- Modified principles: None
+- Added sections: Added rule to Verification & Architecture Standards
+- Removed sections: None
 - Templates requiring updates: ✅ None
 - Follow-up TODOs: None
 -->
@@ -30,10 +30,11 @@ All standalone or utility scripts developed to support operations must be placed
 
 - **Database Consistency:** Interaction with the LTV Cone of Uncertainty (`ltv_database.db`) must go exclusively through designated manager scripts in `skills/`. No manual/arbitrary queries that corrupt the LTV schema.
 - **Node Alignment:** Any new capability must explicitly document which existing Node Point it satisfies or propose a new Node Point if a critical convergence gateway is missing.
+- **Architecture Review:** Always use the `.agents/agents/uservice-arch-reviewer` agent to review the implementation and ensure it strictly follows the architectural design.
 
 ## Governance
 
 This Constitution acts as the primary compass for all AI agents operating within Intent-Swarm-Commander. Any divergence from LTV pathways or skipping of Domain Assessments is considered a violation of project governance.
 All pull requests, implementations, and design specifications must be verified against these principles prior to execution.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-24 | **Last Amended**: 2026-07-24
+**Version**: 1.1.0 | **Ratified**: 2026-07-24 | **Last Amended**: 2026-07-25

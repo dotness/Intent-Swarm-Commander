@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Intent Swarm Commander — Tactical Dashboard for drone swarm operations">
+    <title>ISC — Commander Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar__brand">
+            <h1>Intent Swarm Commander</h1>
+            <span class="topbar__version">v0.2.0</span>
+        </div>
+        <div id="auth-indicator" class="topbar__auth"></div>
+    </header>
+
+    <main class="dashboard">
+        <!-- SMEAC Order Panel -->
+        <section id="smeac-panel" class="panel panel--smeac">
+            <h2 class="panel__title">SMEAC Order</h2>
+            <form id="smeac-form" class="smeac-form">
+                <label for="smeac-situation">Situation</label>
+                <textarea id="smeac-situation" name="situation" required placeholder="Enemy positions, terrain, weather…"></textarea>
+
+                <label for="smeac-mission">Mission</label>
+                <textarea id="smeac-mission" name="mission" required placeholder="Mission objective statement…"></textarea>
+
+                <label for="smeac-execution">Execution</label>
+                <textarea id="smeac-execution" name="execution" required placeholder="Formation, timing, assets…"></textarea>
+
+                <label for="smeac-admin">Admin / Logistics</label>
+                <textarea id="smeac-admin" name="admin_logistics" placeholder="Optional…"></textarea>
+
+                <label for="smeac-signal">Command / Signal</label>
+                <textarea id="smeac-signal" name="command_signal" placeholder="Optional…"></textarea>
+
+                <div class="smeac-form__actions">
+                    <select id="swarm-select" class="smeac-form__swarm-select">
+                        <option value="">Select Swarm…</option>
+                    </select>
+                    <button type="submit" id="smeac-submit" class="btn btn--primary">Submit Order</button>
+                </div>
+            </form>
+            <div id="smeac-result" class="smeac-result" hidden></div>
+        </section>
+
+        <!-- Tactical Map -->
+        <section id="map-panel" class="panel panel--map">
+            <h2 class="panel__title">Tactical Map</h2>
+            <div id="tactical-map" class="map-container"></div>
+        </section>
+
+        <!-- Unit Roster -->
+        <section id="roster-panel" class="panel panel--roster">
+            <h2 class="panel__title">Unit Roster</h2>
+            <table id="roster-table" class="roster-table">
+                <thead>
+                    <tr>
+                        <th>Unit ID</th>
+                        <th>Status</th>
+                        <th>Battery</th>
+                        <th>Mission</th>
+                    </tr>
+                </thead>
+                <tbody id="roster-body">
+                    <tr><td colspan="4" class="roster-table__empty">No active units</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Action History -->
+        <section id="history-panel" class="panel panel--history">
+            <h2 class="panel__title">Action History</h2>
+            <ul id="history-list" class="history-list">
+                <li class="history-list__empty">No actions recorded</li>
+            </ul>
+        </section>
+
+        <!-- Verification Status -->
+        <section id="verification-panel" class="panel panel--verification">
+            <h2 class="panel__title">Verification &amp; Safety</h2>
+            <div id="verification-status" class="verification-status">
+                <span class="verification-status__badge verification-status__badge--ok">System OK</span>
+            </div>
+        </section>
+    </main>
+
+    <!-- HITL Approval Modal -->
+    <dialog id="hitl-modal" class="hitl-modal">
+        <div class="hitl-modal__content">
+            <h2 class="hitl-modal__title">⚠️ High-Impact Action — Approval Required</h2>
+            <div id="hitl-modal-body" class="hitl-modal__body"></div>
+            <div class="hitl-modal__actions">
+                <button id="hitl-reject" class="btn btn--danger">Reject</button>
+                <button id="hitl-approve" class="btn btn--primary">Approve</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal hidden" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;display:flex;align-items:center;justify-content:center;">
+        <div class="modal__content" style="background:#1e1e1e;padding:2rem;border-radius:8px;max-width:400px;width:100%;">
+            <h2>Commander Login</h2>
+            <form id="login-form" style="display:flex;flex-direction:column;gap:1rem;margin-top:1rem;">
+                <input type="text" id="login-commander-id" placeholder="Commander ID" required style="padding:0.5rem;border-radius:4px;border:1px solid #333;background:#2a2a2a;color:#fff;">
+                <input type="password" id="login-passphrase" placeholder="Passphrase" required style="padding:0.5rem;border-radius:4px;border:1px solid #333;background:#2a2a2a;color:#fff;">
+                <button type="submit" class="btn btn--primary" style="padding:0.5rem;">Authenticate</button>
+                <div id="login-error" class="hidden" style="color:#ff4444;font-size:0.9rem;"></div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/hitl.js"></script>
+    <script src="js/auth_indicator.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>
