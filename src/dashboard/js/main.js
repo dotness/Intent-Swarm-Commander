@@ -200,6 +200,24 @@ async function handleSmeacSubmit(event) {
         
         const result = await window.ApiClient.submitSmeac(currentSwarmId, orderData);
         
+        // Visualize target area or flight path on the tactical map if coordinates are specified
+        const allText = `${orderData.mission || ''} ${orderData.execution || ''}`;
+        const coordMatches = [...allText.matchAll(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/g)];
+        if (coordMatches.length >= 2 && window.MapController && typeof window.MapController.drawTargetArea === 'function') {
+            const pointA = [parseFloat(coordMatches[0][2]), parseFloat(coordMatches[0][1])]; // [lng, lat] GeoJSON
+            const pointB = [parseFloat(coordMatches[1][2]), parseFloat(coordMatches[1][1])];
+            window.MapController.drawTargetArea({
+                type: 'LineString',
+                coordinates: [pointA, pointB]
+            });
+        } else if (coordMatches.length === 1 && window.MapController && typeof window.MapController.drawTargetArea === 'function') {
+            const point = [parseFloat(coordMatches[0][2]), parseFloat(coordMatches[0][1])];
+            window.MapController.drawTargetArea({
+                type: 'Point',
+                coordinates: point
+            });
+        }
+
         form.reset();
         resultDiv.hidden = false;
         resultDiv.innerHTML = `

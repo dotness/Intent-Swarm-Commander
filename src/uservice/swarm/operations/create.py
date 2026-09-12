@@ -39,7 +39,7 @@ async def provision_swarm(session: AsyncSession, name: str, drone_count: int, cr
     except Exception as e:
         logger.warning("Docker provisioning unavailable (%s); provisioning simulated swarm endpoint", e)
         container_id = f"sim-{swarm_id.hex[:8]}"
-        endpoint_url = os.getenv("SWARM_DEFAULT_ENDPOINT", "http://isc_edge:8090")
+        endpoint_url = os.getenv("SWARM_DEFAULT_ENDPOINT", "http://localhost:8090")
         status = "ready"
 
     record = SwarmInstance(

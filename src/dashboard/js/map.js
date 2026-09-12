@@ -51,7 +51,8 @@ function updateDronePositions(swarmId, drones) {
                 color: '#3b82f6',
                 fillColor: '#3b82f6',
                 fillOpacity: 0.8,
-                radius: 6
+                radius: 6,
+                className: 'drone-marker'
             }).addTo(map);
             
             marker.bindPopup(`
@@ -85,27 +86,30 @@ function drawTargetArea(geoJson) {
         map.removeLayer(targetAreaLayer);
     }
 
-    if (geoJson && (geoJson.type === 'Polygon' || geoJson.type === 'Point')) {
+    if (geoJson && (geoJson.type === 'Polygon' || geoJson.type === 'Point' || geoJson.type === 'LineString')) {
         targetAreaLayer = L.geoJSON(geoJson, {
             style: {
                 color: '#ef4444',
-                weight: 2,
+                weight: 3,
+                dashArray: '6, 6',
                 fillOpacity: 0.2
             }
         }).addTo(map);
 
-        // Fit map bounds to show the area
-        if (geoJson.type === 'Polygon') {
-            map.fitBounds(targetAreaLayer.getBounds(), { padding: [20, 20] });
+        // Fit map bounds to show the area or flight corridor
+        if (geoJson.type === 'Polygon' || geoJson.type === 'LineString') {
+            map.fitBounds(targetAreaLayer.getBounds(), { padding: [30, 30] });
         } else {
             map.setView(targetAreaLayer.getBounds().getCenter(), 15);
         }
     }
 }
 
-// Export for use in main.js
+// Export for use in main.js and test harness
 window.MapController = {
     initMap,
     updateDronePositions,
-    drawTargetArea
+    drawTargetArea,
+    getDroneMarkers: () => droneMarkers,
+    getTargetAreaLayer: () => targetAreaLayer
 };
