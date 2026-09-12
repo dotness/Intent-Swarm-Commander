@@ -16,6 +16,13 @@ async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit
 async def init_db() -> None:
     """Create all tables defined via the declarative base."""
     from src.uservice.database.base import Base  # noqa: F811
+    import src.uservice.smeac.models.storage.smeac  # noqa: F401
+    import src.uservice.smeac.models.contract.command  # noqa: F401
+    import src.uservice.smeac.models.contract.violation  # noqa: F401
+    import src.uservice.hitl.models.storage.decision  # noqa: F401
+    import src.uservice.operation.models  # noqa: F401
+    import src.uservice.operation.audit  # noqa: F401
+    import src.uservice.swarm.models.storage.instance  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

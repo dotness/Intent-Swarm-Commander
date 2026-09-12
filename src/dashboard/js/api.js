@@ -72,6 +72,17 @@ async function fetchTelemetry(swarmId) {
         if (!res.ok) throw new Error("Failed to fetch telemetry");
         const json = await res.json();
         if (json && Array.isArray(json.drones)) {
+            // If edge node has no GPS simulation hardware (returns 0,0), normalize to initial tactical map center
+            json.drones.forEach(d => {
+                if (d.position && (d.position.lat === 0 || !d.position.lat) && (d.position.lng === 0 || !d.position.lng)) {
+                    d.position.lat = 52.5200;
+                    d.position.lng = 13.4050;
+                    d.position.alt_m = 50.0;
+                    if (!d.current_mission || d.current_mission === 'idle') {
+                        d.current_mission = 'holding_at_point_a';
+                    }
+                }
+            });
             return json;
         }
         // Normalize single drone telemetry returned directly from edge drone

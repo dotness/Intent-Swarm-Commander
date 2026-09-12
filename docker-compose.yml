@@ -35,6 +35,9 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://isc_user:isc_pass@localhost:5432/isc_db
       - TEMPORAL_URL=localhost:7233
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-gemini-1.5-flash}
     command: uvicorn src.uservice.main:app --host 0.0.0.0 --port 8000
     depends_on:
       - postgres

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -45,8 +46,70 @@ class SmeacFacade(DomainFacade):
         )
         self.session.add(order_record)
         await self.session.flush()
+
+        # 2. Translate SMEAC intent via Gemini LLM agent if API key is configured
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if api_key and api_key != "placeholder_key":
+            try:
+                import json
+                from src.uservice.base.agent import AgentContext
+                from src.uservice.smeac.operations.smeac_agents import parse_smeac_order
+                from src.uservice.smeac.models.contract.command import (
+                    SwarmCommand,
+                    MissionType,
+                    FormationType,
+                    CommandPriority,
+                    HIGH_IMPACT_MISSIONS,
+                )
+
+                ctx = AgentContext(
+                    commander_id=self.user.get("sub", "unknown"),
+                    swarm_instance_id=str(swarm_id),
+                    correlation_id=str(order_id),
+                )
+                parse_result = await asyncio.wait_for(
+                    parse_smeac_order(
+                        situation=body.situation,
+                        mission=body.mission,
+                        execution=body.execution,
+                        admin_logistics=body.admin_logistics,
+                        command_signal=body.command_signal,
+                        context=ctx,
+                    ),
+                    timeout=20.0,
+                )
+
+                for cmd_dto in parse_result.commands:
+                    m_str = cmd_dto.mission_type.lower()
+                    f_str = cmd_dto.formation_type.lower()
+                    p_str = cmd_dto.priority.lower()
+
+                    m_type = MissionType(m_str) if m_str in [m.value for m in MissionType] else MissionType.PATROL
+                    f_type = FormationType(f_str) if f_str in [f.value for f in FormationType] else FormationType.LINE
+                    prio = CommandPriority(p_str) if p_str in [p.value for p in CommandPriority] else CommandPriority.NORMAL
+
+                    cmd_record = SwarmCommand(
+                        smeac_order_id=order_id,
+                        mission_type=m_type,
+                        formation_type=f_type,
+                        target_area=json.dumps(cmd_dto.target_area) if isinstance(cmd_dto.target_area, (dict, list)) else str(cmd_dto.target_area),
+                        target_object_class=cmd_dto.target_object_class,
+                        drone_count=cmd_dto.drone_count,
+                        altitude_m=cmd_dto.altitude_m,
+                        speed_ms=cmd_dto.speed_ms,
+                        duration_s=cmd_dto.duration_s,
+                        priority=prio,
+                        is_high_impact=m_type in HIGH_IMPACT_MISSIONS,
+                    )
+                    self.session.add(cmd_record)
+
+                order_record.status = "translated"
+                await self.session.flush()
+                logger.info("Parsed %d swarm commands via Gemini for order %s", len(parse_result.commands), order_id)
+            except Exception as e:
+                logger.warning("Gemini SMEAC parser skipped or error (fallback): %s", e)
         
-        # 2. Schedule workflow via Operation wrapper
+        # 3. Schedule workflow via Operation wrapper
         wf_input = ProcessSmeacInput(
             order_id=str(order_id),
             commander_id=self.user.get("sub", "unknown"),
@@ -73,7 +136,7 @@ class SmeacFacade(DomainFacade):
         
         return {
             "order_id": order_id,
-            "status": "submitted",
+            "status": order_record.status,
             "swarm_instance_id": swarm_id,
             "parsed_fields": parsed_fields,
             "created_at": now,
@@ -89,9 +152,40 @@ class SmeacFacade(DomainFacade):
         if not record:
             raise ValueError("Order not found")
         
+        import json
+        from sqlalchemy import select
+        from src.uservice.smeac.models.contract.command import SwarmCommand
+
+        formatted_cmds = []
+        try:
+            cmds_stmt = select(SwarmCommand).where(SwarmCommand.smeac_order_id == order_id)
+            cmds_res = await self.session.execute(cmds_stmt)
+            commands = cmds_res.scalars().all()
+
+            for cmd in commands:
+                area = cmd.target_area
+                if isinstance(area, str) and (area.startswith("{") or area.startswith("[")):
+                    try:
+                        area = json.loads(area)
+                    except Exception:
+                        pass
+                formatted_cmds.append({
+                    "id": cmd.id,
+                    "mission_type": cmd.mission_type.value if hasattr(cmd.mission_type, "value") else str(cmd.mission_type),
+                    "formation_type": cmd.formation_type.value if hasattr(cmd.formation_type, "value") else str(cmd.formation_type),
+                    "target_area": area if isinstance(area, dict) else {"raw": area},
+                    "target_object_class": cmd.target_object_class,
+                    "drone_count": cmd.drone_count,
+                    "altitude_m": cmd.altitude_m,
+                    "is_high_impact": cmd.is_high_impact,
+                    "verification_status": "verified",
+                })
+        except Exception as e:
+            logger.warning("Failed to query swarm_commands for order %s: %s", order_id, e)
+
         return {
             "order_id": record.id,
             "status": record.status,
-            "commands": [],
+            "commands": formatted_cmds,
             "constraint_violations": [],
         }

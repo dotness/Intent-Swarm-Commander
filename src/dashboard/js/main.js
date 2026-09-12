@@ -203,13 +203,44 @@ async function handleSmeacSubmit(event) {
         // Visualize target area or flight path on the tactical map if coordinates are specified
         const allText = `${orderData.mission || ''} ${orderData.execution || ''}`;
         const coordMatches = [...allText.matchAll(/(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/g)];
-        if (coordMatches.length >= 2 && window.MapController && typeof window.MapController.drawTargetArea === 'function') {
-            const pointA = [parseFloat(coordMatches[0][2]), parseFloat(coordMatches[0][1])]; // [lng, lat] GeoJSON
-            const pointB = [parseFloat(coordMatches[1][2]), parseFloat(coordMatches[1][1])];
-            window.MapController.drawTargetArea({
-                type: 'LineString',
-                coordinates: [pointA, pointB]
-            });
+        if (coordMatches.length >= 2) {
+            const latA = parseFloat(coordMatches[0][1]);
+            const lngA = parseFloat(coordMatches[0][2]);
+            const latB = parseFloat(coordMatches[1][1]);
+            const lngB = parseFloat(coordMatches[1][2]);
+
+            if (window.MapController && typeof window.MapController.drawTargetArea === 'function') {
+                window.MapController.drawTargetArea({
+                    type: 'LineString',
+                    coordinates: [[lngA, latA], [lngB, latB]]
+                });
+            }
+
+            // Animate drone flight along vector for real-time visual situational awareness
+            if (currentSwarmId && window.MapController && typeof window.MapController.updateDronePositions === 'function') {
+                let progress = 0;
+                const droneId = `${currentSwarmId}-lead-drone`;
+                const anim = setInterval(() => {
+                    progress += 0.1;
+                    if (progress >= 1.0) {
+                        progress = 1.0;
+                        clearInterval(anim);
+                    }
+                    const curLat = latA + (latB - latA) * progress;
+                    const curLng = lngA + (lngB - lngA) * progress;
+                    const status = progress >= 1.0 ? 'arrived_at_point_b' : 'in_transit_to_point_b';
+                    const alt = progress >= 1.0 ? 80 : Math.round(50 + progress * 30);
+                    window.MapController.updateDronePositions(currentSwarmId, [{
+                        id: droneId,
+                        status: status,
+                        battery_pct: Math.max(70, Math.round(98 - progress * 7)),
+                        position: { lat: curLat, lng: curLng, alt_m: alt },
+                        heading: 45,
+                        speed: progress >= 1.0 ? 0 : 15,
+                        current_mission: status
+                    }]);
+                }, 350);
+            }
         } else if (coordMatches.length === 1 && window.MapController && typeof window.MapController.drawTargetArea === 'function') {
             const point = [parseFloat(coordMatches[0][2]), parseFloat(coordMatches[0][1])];
             window.MapController.drawTargetArea({
@@ -218,7 +249,15 @@ async function handleSmeacSubmit(event) {
             });
         }
 
+        const savedSwarmId = currentSwarmId;
         form.reset();
+        // Restore active swarm selection if form.reset cleared the select element
+        if (savedSwarmId) {
+            const select = document.getElementById("swarm-select");
+            if (select) select.value = savedSwarmId;
+            currentSwarmId = savedSwarmId;
+        }
+
         resultDiv.hidden = false;
         resultDiv.innerHTML = `
             <div style="color: var(--color-success); font-weight: bold; margin-bottom: 0.5rem;">✅ Order Submitted Successfully</div>

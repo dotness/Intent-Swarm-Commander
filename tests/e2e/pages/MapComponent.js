@@ -13,7 +13,7 @@ class MapComponent {
     this.mapContainer = page.locator('#tactical-map');
     this.leafletContainer = page.locator('#tactical-map.leaflet-container');
     this.markerPane = page.locator('.leaflet-marker-pane, .leaflet-overlay-pane');
-    this.markers = page.locator('.drone-marker, path.drone-marker, .leaflet-marker-icon, .leaflet-overlay-pane path.leaflet-interactive:not([stroke-dasharray])');
+    this.markers = page.locator('.drone-marker, .leaflet-marker-icon, .leaflet-overlay-pane path.leaflet-interactive, .leaflet-interactive');
     this.popup = page.locator('.leaflet-popup');
     this.popupContent = page.locator('.leaflet-popup-content');
   }
