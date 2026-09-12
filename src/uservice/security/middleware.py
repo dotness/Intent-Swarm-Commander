@@ -10,8 +10,8 @@ from src.uservice.security.jwt import TokenValidationError, decode_token, extrac
 
 logger = logging.getLogger(__name__)
 
-# Routes that bypass auth (health checks, public endpoints)
-PUBLIC_PATHS = frozenset({"/", "/health", "/docs", "/openapi.json", "/redoc"})
+# Routes that bypass auth (health checks, public endpoints, login)
+PUBLIC_PATHS = frozenset({"/", "/health", "/docs", "/openapi.json", "/redoc", "/api/v1/auth/login"})
 
 
 async def auth_gateway_middleware(request: Request, call_next: Callable) -> Response:
