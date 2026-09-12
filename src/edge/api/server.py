@@ -96,12 +96,15 @@ async def lifespan(app: FastAPI):
     if MAVSDK_AVAILABLE:
         _drone = MavSystem()
         mav_url = os.environ.get("MAVSDK_URL", "udp://:14540")
-        try:
-            await _drone.connect(system_address=mav_url)
-            logger.info("Server connected to drone via MAVSDK at %s", mav_url)
-            _telemetry_task = asyncio.create_task(telemetry_loop())
-        except Exception as e:
-            logger.error("Failed to connect to drone: %s", e)
+        async def connect_drone():
+            global _telemetry_task
+            try:
+                await _drone.connect(system_address=mav_url)
+                logger.info("Server connected to drone via MAVSDK at %s", mav_url)
+                _telemetry_task = asyncio.create_task(telemetry_loop())
+            except Exception as e:
+                logger.error("Failed to connect to drone: %s", e)
+        asyncio.create_task(connect_drone())
     
     yield
     

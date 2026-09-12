@@ -29,7 +29,8 @@ docker compose ps
 
 - **Dashboard**: `http://localhost:8080`
 - **Backend API**: `http://localhost:8000`
-- **Temporal UI**: `http://localhost:8080` (Wait, Temporal usually has a UI at 8080 or 8233)
+- **Edge Node API**: `http://localhost:8090`
+- **Temporal Server (gRPC)**: `localhost:7233`
 - **Gazebo Simulation**: The 3D physics window will appear on your host machine automatically.
 
 ### Running a Simulation End-to-End

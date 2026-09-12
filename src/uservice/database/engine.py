@@ -25,3 +25,6 @@ async def get_session() -> AsyncSession:  # type: ignore[misc]
     """Yield a scoped async session for request-level DI."""
     async with async_session() as session:
         yield session
+
+
+get_db = get_session

@@ -18,6 +18,11 @@ class ISCError(Exception):
         super().__init__(message)
 
 
+class ResourceDoesNotExist(ISCError):
+    def __init__(self, message: str = "Resource does not exist"):
+        super().__init__(message, status_code=404)
+
+
 class NotFoundError(ISCError):
     def __init__(self, resource: str, resource_id: str):
         super().__init__(f"{resource} '{resource_id}' not found", status_code=404)

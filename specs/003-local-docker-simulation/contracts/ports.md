@@ -6,5 +6,6 @@ This file defines the networking mapping utilized by the Docker Compose orchestr
 - **8080**: Intent-Swarm-Commander Dashboard (HTTP Server)
 - **5432**: PostgreSQL Database
 - **7233**: Temporal Server (Frontend)
+- **8090**: ISC Edge Node API (FastAPI)
 - **14540**: MAVSDK UDP Port (Simulation)
 - **8888**: MicroXRCEAgent UDP Port (ROS 2 Bridge)

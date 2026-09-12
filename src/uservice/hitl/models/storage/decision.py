@@ -22,7 +22,7 @@ class HitlDecision(UUIDMixin, TimestampMixin, PermissionMixin, Base):
     __tablename__ = "hitl_decisions"
 
     swarm_command_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("swarm_commands.id"), nullable=False,
+        nullable=False,
     )
     commander_id: Mapped[str] = mapped_column(String(255), nullable=False)
     decision: Mapped[str] = mapped_column(String, nullable=False)

@@ -73,7 +73,7 @@ function selectSwarm(swarmId) {
     pollHitl();
 
     // Set polling intervals
-    telemetryInterval = setInterval(pollTelemetry, 2000);
+    telemetryInterval = setInterval(pollTelemetry, 200); // 5 Hz polling rate per SC-002
     hitlInterval = setInterval(pollHitl, 5000);
 }
 

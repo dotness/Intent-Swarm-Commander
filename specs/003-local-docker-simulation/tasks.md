@@ -2,55 +2,61 @@
 
 **Input**: Design documents from `/specs/003-local-docker-simulation/`
 
-**Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/ports.md
+**Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/ports.md, quickstart.md
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-**Purpose**: Project initialization and basic structure for the orchestration environment.
+**Purpose**: Project initialization and containerization infrastructure for the local orchestration environment.
 
-- [x] T001 Create `Dockerfile.drone_sim` in the repository root (adapted from `Drone-Swarm`'s Dockerfile) for Gazebo/ROS2/PX4 edge node containerization.
-- [x] T002 Create `Dockerfile.backend` in the repository root for the FastAPI microservices (edge/uservice) and dashboard.
-- [x] T003 Create `docker-compose.yml` in the repository root bridging the services based on `contracts/ports.md`.
+- [X] T001 [P] Create `Dockerfile.drone_sim` in the repository root containerizing Gazebo Harmonic, ROS 2 Humble, and PX4 SITL.
+- [X] T002 [P] Create `Dockerfile.backend` in the repository root containerizing FastAPI microservices and dashboard static server.
+- [X] T003 [P] Create `scripts/entrypoint_drone.sh` to initialize MicroXRCEAgent UDP bridge and launch PX4 Gazebo SITL per Constitution Principle V.
+- [X] T004 Create `docker-compose.yml` in the repository root orchestrating postgres, temporal, backend, dashboard, edge_drone, and drone_sim per `contracts/ports.md`.
 
 ---
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-**Purpose**: Core infrastructure that MUST be complete before the simulation can run end-to-end.
+**Purpose**: Core edge service interfaces and communications required before simulation integration.
 
-- [x] T004 [P] Update `src/edge/api/server.py` or `src/edge/flight/controller.py` to allow overriding the MAVSDK connection URL via an environment variable (defaulting to `udp://:14540` for SITL).
-- [x] T005 [P] Implement/verify the MicroXRCEAgent startup within the `Dockerfile.drone_sim` entrypoint to ensure telemetry bridging works upon container boot.
+**⚠️ CRITICAL**: No user story work can begin until this phase is complete.
 
-**Checkpoint**: Foundation ready - containers can be built and internal code supports the simulation endpoints.
+- [X] T005 [P] Update `src/edge/api/server.py` to configure MAVSDK connection URL via `MAVSDK_URL` environment variable (defaulting to `udp://:14540`).
+- [X] T006 [P] Update `src/edge/vision/camera.py` to subscribe to Gazebo simulated ROS 2 topic `/camera/image_raw` via `rclpy` when `SIMULATION_MODE=true`.
+- [X] T007 Wire `src/edge/api/server.py` `/target` endpoint to instantiate `FlightController` and trigger autonomous navigation loop per SC-003.
+- [X] T008 Wire `src/edge/api/server.py` `/telemetry` endpoint to stream live MAVSDK drone telemetry (position, battery, heading) per SC-002 and SC-004.
+
+**Checkpoint**: Foundation ready — edge microservices and simulation connection endpoints are established.
 
 ---
 
 ## Phase 3: User Story 1 - Local E2E Simulation Environment (Priority: P1) 🎯 MVP
 
-**Goal**: Run the entire Intent-Swarm-Commander stack locally on a single machine for testing and MVP validation.
+**Goal**: Run the entire Intent-Swarm-Commander stack locally on a single machine for testing and MVP validation via Docker Compose.
 
-**Independent Test**: Can be tested by running `docker compose up` on a host machine and verifying that all services start successfully.
+**Independent Test**: Execute `docker compose up -d` and run `quickstart.md` scenarios (verify all services start, Gazebo SITL connects, telemetry streams at $\ge 5\text{ Hz}$, and SMEAC order executes takeoff).
 
 ### Implementation for User Story 1
 
-- [x] T006 [P] [US1] Inject `SIMULATION_MODE=true` into the edge drone container definitions inside `docker-compose.yml`.
-- [x] T007 [P] [US1] Define volume mounts for Gazebo GUI passthrough (X11/Wayland/WSLg) in `docker-compose.yml` to allow the 3D visualizer to spawn on the host.
-- [x] T008 [US1] Configure Docker Compose networking (e.g., `network_mode: host` or bridged with specific exposed ports from `contracts/ports.md`).
-- [x] T009 [US1] Update `src/edge/vision/camera.py` to consume the ROS 2 `/camera/image_raw` topic via `rclpy` when `SIMULATION_MODE=true`, instead of emitting mock frames.
-- [x] T010 [US1] Test container orchestration via `docker compose build` and `docker compose up -d`.
-- [x] T011 [US1] Perform the end-to-end validation defined in `quickstart.md`, including Scenario 3 (submitting SMEAC order triggers Gazebo drone takeoff) and explicitly verifying the 5 Hz telemetry throughput on the dashboard.
-- [x] T014 [US1] Configure Docker Compose restart policies (e.g., `restart: unless-stopped`) for the simulation containers to handle edge cases like Gazebo crashes or MicroXRCEAgent failures.
+- [X] T009 [P] [US1] Inject `SIMULATION_MODE=true` into edge drone container environment definitions in `docker-compose.yml`.
+- [X] T010 [P] [US1] Configure Gazebo GUI display passthrough (`DISPLAY`, `WAYLAND_DISPLAY`, `/tmp/.X11-unix`, `/mnt/wslg`) and GPU reservations in `docker-compose.yml`.
+- [X] T011 [US1] Configure simulation container entrypoint (`/opt/entrypoint_drone.sh`) and restart policies (`restart: unless-stopped`) in `docker-compose.yml`.
+- [X] T012 [US1] Update dashboard telemetry polling in `src/dashboard/js/main.js` to 200 ms interval to satisfy SC-002 (5 Hz throughput).
+- [X] T013 [US1] Implement automated integration test assertions in `tests/integration/test_e2e.py` verifying edge simulation endpoints and telemetry responses.
+- [X] T014 [US1] Execute full container build and startup validation via `docker compose build` and `docker compose up -d` per SC-001.
+- [X] T015 [US1] Execute end-to-end mission and telemetry validation defined in `quickstart.md` Scenario 3.
 
-**Checkpoint**: At this point, User Story 1 should be fully functional and testable independently.
+**Checkpoint**: At this point, User Story 1 is fully functional and verifiable end-to-end.
 
 ---
 
-## Phase 4: Polish & Cross-Cutting Concerns
+## Phase 4: Polish & Governance
 
-**Purpose**: Improvements that affect multiple user stories
+**Purpose**: Cross-cutting documentation, sanitization, and constitutional governance.
 
-- [x] T012 Update root README.md with the new Docker Compose local development instructions.
-- [x] T013 Code cleanup and ensuring no hardcoded IPs remain in the orchestrator config.
+- [X] T016 [P] Update root `README.md` with local Docker Compose prerequisites, GPU passthrough instructions, and startup commands.
+- [X] T017 [P] Audit and sanitize orchestrator configurations to ensure no hardcoded host IPs remain in `src/` or `docker-compose.yml`.
+- [X] T018 Conduct formal architectural review using `.agents/agents/uservice-arch-reviewer` to verify compliance with Constitution standards.
 
 ---
 
@@ -58,19 +64,31 @@
 
 ### Phase Dependencies
 
-- **Setup (Phase 1)**: No dependencies - can start immediately
-- **Foundational (Phase 2)**: Depends on Setup completion
-- **User Stories (Phase 3+)**: All depend on Foundational phase completion
-- **Polish (Final Phase)**: Depends on all desired user stories being complete
+- **Setup (Phase 1)**: No dependencies — can start immediately.
+- **Foundational (Phase 2)**: Depends on Setup completion — BLOCKS all user stories.
+- **User Story 1 (Phase 3)**: Depends on Foundational phase completion.
+- **Polish & Governance (Phase 4)**: Depends on User Story 1 completion.
 
 ### User Story Dependencies
 
-- **User Story 1 (P1)**: Can start after Foundational (Phase 2) - No dependencies on other stories.
+- **User Story 1 (P1)**: Can start after Foundational (Phase 2) — self-contained MVP increment.
 
 ### Parallel Opportunities
 
-- Dockerfile creations (T001, T002) can happen in parallel.
-- Internal python configuration (T004) and Docker entrypoints (T005) can be developed independently.
+- In Phase 1: `T001`, `T002`, and `T003` can run in parallel.
+- In Phase 2: `T005` and `T006` can run in parallel.
+- In Phase 3: `T009` and `T010` can run in parallel.
+- In Phase 4: `T016` and `T017` can run in parallel.
+
+---
+
+## Parallel Example: User Story 1
+
+```bash
+# Launch environment and GUI passthrough configurations in parallel:
+Task: "Inject SIMULATION_MODE=true into edge drone container environment definitions in docker-compose.yml"
+Task: "Configure Gazebo GUI display passthrough (X11/Wayland/WSLg) and GPU reservations in docker-compose.yml"
+```
 
 ---
 
@@ -78,13 +96,8 @@
 
 ### MVP First (User Story 1 Only)
 
-1. Complete Phase 1: Setup
-2. Complete Phase 2: Foundational (CRITICAL - blocks all stories)
-3. Complete Phase 3: User Story 1
-4. **STOP and VALIDATE**: Test User Story 1 independently using `docker compose up`
-5. Deploy/demo if ready
-
-## Phase 5: Convergence
-
-- [x] T015 Connect API target assignment to trigger `FlightController` execution per SC-003 (missing). CRITICAL.
-- [x] T016 Wire API `/telemetry` endpoint to MAVSDK drone telemetry stream instead of mock random data per SC-002, SC-004 (contradicts).
+1. Complete Phase 1: Setup (container definitions, entrypoint, orchestrator).
+2. Complete Phase 2: Foundational (MAVSDK connection, ROS 2 camera subscriber, flight controller & telemetry wiring).
+3. Complete Phase 3: User Story 1 (compose environment, dashboard 5 Hz telemetry, E2E validation).
+4. **STOP and VALIDATE**: Verify all `quickstart.md` scenarios.
+5. Complete Phase 4: Polish & Governance (documentation, sanitization, arch review).

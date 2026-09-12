@@ -36,3 +36,12 @@ class UUIDPrimaryKeyMixin:
         primary_key=True,
         default=uuid.uuid4,
     )
+
+
+UUIDMixin = UUIDPrimaryKeyMixin
+
+
+class PermissionMixin:
+    """Shared permission mixin for access control."""
+
+    pass
