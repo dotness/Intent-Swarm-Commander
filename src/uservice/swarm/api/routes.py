@@ -56,18 +56,20 @@ async def get_all_swarms(
 
     swarms = await facade.get_all_swarms()
     
+    swarm_list = [
+        {
+            "id": s["id"],
+            "name": s["name"],
+            "status": s["status"],
+            "drone_count": s["drone_count"],
+            "endpoint_url": s["endpoint_url"],
+            "created_at": s["created_at"].isoformat() if s.get("created_at") and not isinstance(s["created_at"], str) else str(s.get("created_at") or ""),
+        }
+        for s in swarms
+    ]
     return {
-        "data": [
-            {
-                "id": s["id"],
-                "name": s["name"],
-                "status": s["status"],
-                "drone_count": s["drone_count"],
-                "endpoint_url": s["endpoint_url"],
-                "created_at": s["created_at"].isoformat() if not isinstance(s["created_at"], str) else s["created_at"],
-            }
-            for s in swarms
-        ]
+        "swarms": swarm_list,
+        "data": swarm_list,
     }
 
 

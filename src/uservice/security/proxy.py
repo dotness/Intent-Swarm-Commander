@@ -21,7 +21,11 @@ async def swarm_proxy_middleware(request: Request, call_next: Callable) -> Respo
     if not path.startswith("/api/v1/swarms/") or path == "/api/v1/swarms":
         return await call_next(request)
 
-    # Example path: /api/v1/swarms/1234/orders
+    # Pass through endpoints handled directly by the microservice application routers
+    if any(endpoint in path for endpoint in ["/orders", "/hitl", "/telemetry"]):
+        return await call_next(request)
+
+    # Example path: /api/v1/swarms/1234/commands
     parts = path.split("/")
     if len(parts) < 6:
         return await call_next(request)

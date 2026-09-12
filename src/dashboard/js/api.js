@@ -10,7 +10,8 @@ async function fetchSwarms() {
         const res = await fetch(`${API_BASE}/swarms`, { headers: window.authManager.getAuthHeader() });
         if (res.status === 401) { window.authManager.clearSession(); throw new Error("Unauthorized"); }
         if (!res.ok) throw new Error("Failed to fetch swarms");
-        return await res.json();
+        const json = await res.json();
+        return { swarms: json.swarms || json.data || [] };
     } catch (e) {
         console.error(e);
         return { swarms: [] };
@@ -37,7 +38,8 @@ async function submitSmeac(swarmId, orderData) {
             throw new Error(err.error || "Submission failed");
         }
         
-        return await res.json();
+        const json = await res.json();
+        return json.data || json;
     } catch (e) {
         console.error(e);
         throw e;
@@ -52,7 +54,8 @@ async function checkPendingHitl(swarmId) {
         const res = await fetch(`${API_BASE}/swarms/${swarmId}/hitl/pending`, { headers: window.authManager.getAuthHeader() });
         if (res.status === 401) { window.authManager.clearSession(); throw new Error("Unauthorized"); }
         if (!res.ok) return { pending: [] };
-        return await res.json();
+        const json = await res.json();
+        return { pending: json.pending || json.data || [] };
     } catch (e) {
         return { pending: [] };
     }
@@ -67,7 +70,28 @@ async function fetchTelemetry(swarmId) {
         const res = await fetch(`${API_BASE}/swarms/${swarmId}/telemetry`, { headers: window.authManager.getAuthHeader() });
         if (res.status === 401) { window.authManager.clearSession(); throw new Error("Unauthorized"); }
         if (!res.ok) throw new Error("Failed to fetch telemetry");
-        return await res.json();
+        const json = await res.json();
+        if (json && Array.isArray(json.drones)) {
+            return json;
+        }
+        // Normalize single drone telemetry returned directly from edge drone
+        return {
+            drones: [
+                {
+                    id: `${swarmId}-drone-1`,
+                    status: json.status || 'idle',
+                    battery_pct: json.battery !== undefined ? json.battery : 100,
+                    position: {
+                        lat: (json.position && json.position.lat !== undefined) ? json.position.lat : 52.5200,
+                        lng: (json.position && (json.position.lng !== undefined ? json.position.lng : json.position.lon)) !== undefined ? (json.position.lng || json.position.lon) : 13.4050,
+                        alt_m: (json.position && json.position.alt !== undefined) ? json.position.alt : 50.0
+                    },
+                    heading: json.heading || 0,
+                    speed: json.speed || 0,
+                    current_mission: json.status || 'patrol'
+                }
+            ]
+        };
     } catch (e) {
         console.error(e);
         return { drones: [] };

@@ -24,7 +24,12 @@ async def init_db() -> None:
 async def get_session() -> AsyncSession:  # type: ignore[misc]
     """Yield a scoped async session for request-level DI."""
     async with async_session() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 get_db = get_session

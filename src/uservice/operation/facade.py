@@ -8,13 +8,39 @@ from temporalio.client import Client
 _client: Client | None = None
 
 
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
+
 async def get_temporal_client() -> Client:
     """Return a cached Temporal client instance."""
     global _client
     if _client is None:
-        host = os.getenv("TEMPORAL_HOST", "localhost")
-        port = os.getenv("TEMPORAL_PORT", "7233")
-        _client = await Client.connect(f"{host}:{port}")
+        target = os.getenv("TEMPORAL_URL")
+        if not target:
+            host = os.getenv("TEMPORAL_HOST")
+            port = os.getenv("TEMPORAL_PORT", "7233")
+            if host:
+                target = f"{host}:{port}"
+            else:
+                target = "127.0.1.1:7233"
+        
+        try:
+            _client = await asyncio.wait_for(Client.connect(target), timeout=3.0)
+        except Exception as e:
+            logger.warning("Could not connect to Temporal at %s (%s), trying fallbacks", target, e)
+            for fallback in ["127.0.1.1:7233", "127.0.0.1:7233", "localhost:7233"]:
+                if fallback == target:
+                    continue
+                try:
+                    _client = await asyncio.wait_for(Client.connect(fallback), timeout=2.0)
+                    logger.info("Connected to Temporal at fallback %s", fallback)
+                    break
+                except Exception:
+                    continue
+            if _client is None:
+                raise RuntimeError("Could not connect to Temporal on any host")
     return _client
 
 

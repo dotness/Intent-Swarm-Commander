@@ -81,7 +81,8 @@ class HitlFacade(DomainFacade):
             "decision": record.decision,
             "rationale": record.rationale,
             "status": record.status,
-            "commander_id": record.commander_id
+            "commander_id": record.commander_id,
+            "decided_at": datetime.now(timezone.utc).isoformat(),
         }
 
         # Send Temporal signal if workflow_id is present

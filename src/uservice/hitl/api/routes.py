@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -45,7 +46,7 @@ async def decide_hitl(
             decision_id=record["decision_id"],
             decision=record["decision"],
             command_status=command_status,
-            decided_at=record["decided_at"].isoformat() if not isinstance(record["decided_at"], str) else record["decided_at"],
+            decided_at=str(record.get("decided_at") or datetime.now(timezone.utc).isoformat()),
         )
     )
 
@@ -61,4 +62,4 @@ async def list_pending_hitl(
     facade = await HitlFacade.create(session=session, user=user_context)
 
     pending = await facade.get_pending_decisions(swarm_id=swarm_id)
-    return {"data": pending}
+    return {"pending": pending, "data": pending}

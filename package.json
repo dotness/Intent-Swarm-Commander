@@ -1,0 +1,23 @@
+{
+  "name": "intent-swarm-commander",
+  "version": "0.2.0",
+  "description": "Intent Swarm Commander E2E Playwright Test Suite",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0"
+  },
+  "keywords": [
+    "playwright",
+    "e2e",
+    "testing",
+    "drone-swarm",
+    "smeac"
+  ],
+  "author": "Antigravity & Swarm Commander Team",
+  "license": "MIT"
+}

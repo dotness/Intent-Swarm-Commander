@@ -96,6 +96,7 @@ async def get_swarm(session: AsyncSession, swarm_id: uuid.UUID) -> dict | None:
         "status": record.status,
         "drone_count": record.drone_count,
         "created_by": record.created_by,
+        "created_at": record.created_at,
     }
 
 
@@ -113,6 +114,7 @@ async def list_swarms(session: AsyncSession) -> list[dict]:
             "status": r.status,
             "drone_count": r.drone_count,
             "created_by": r.created_by,
+            "created_at": r.created_at,
         }
         for r in records
     ]
