@@ -29,6 +29,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Populate swarms
     await loadSwarms();
+
+    // Reload swarms when authentication status changes
+    window.addEventListener('auth-changed', async (e) => {
+        if (e.detail && e.detail.authenticated) {
+            await loadSwarms();
+        }
+    });
 });
 
 /**

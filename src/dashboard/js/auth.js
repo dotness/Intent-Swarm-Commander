@@ -85,6 +85,7 @@ class AuthManager {
         const modal = document.getElementById('login-modal');
         if (modal) {
             modal.classList.remove('hidden');
+            modal.style.display = 'flex';
         }
     }
     
@@ -92,6 +93,7 @@ class AuthManager {
         const modal = document.getElementById('login-modal');
         if (modal) {
             modal.classList.add('hidden');
+            modal.style.display = 'none';
         }
     }
 }

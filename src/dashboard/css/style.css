@@ -337,3 +337,7 @@ body {
     .panel--smeac { grid-column: 1; grid-row: auto; }
     .panel--map   { grid-column: 1; grid-row: auto; }
 }
+
+.hidden {
+    display: none !important;
+}
