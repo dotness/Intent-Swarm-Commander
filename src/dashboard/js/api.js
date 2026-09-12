@@ -145,11 +145,11 @@ async function getOrderStatus(swarmId, orderId) {
     }
 }
 
-window.ApiClient = {
+window.ApiClient = Object.assign(window.ApiClient || {}, {
     fetchSwarms,
     createSwarm,
     submitSmeac,
     getOrderStatus,
     checkPendingHitl,
     fetchTelemetry
-};
+});

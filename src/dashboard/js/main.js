@@ -125,10 +125,29 @@ async function handleCreateSwarmSubmit(event) {
         submitBtn.textContent = "Provisioning...";
         if (errorDiv) errorDiv.hidden = true;
 
-        const swarm = await window.ApiClient.createSwarm({
-            name: name,
-            drone_count: droneCount
-        });
+        let swarm;
+        if (window.ApiClient && typeof window.ApiClient.createSwarm === 'function') {
+            swarm = await window.ApiClient.createSwarm({
+                name: name,
+                drone_count: droneCount
+            });
+        } else {
+            const authHeader = (window.authManager && window.authManager.getAuthHeader) ? window.authManager.getAuthHeader() : {};
+            const res = await fetch("http://localhost:8000/api/v1/swarms", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...authHeader
+                },
+                body: JSON.stringify({ name: name, drone_count: droneCount })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || err.detail || "Failed to create swarm");
+            }
+            const json = await res.json();
+            swarm = json.data || json;
+        }
 
         form.reset();
         modal.close();

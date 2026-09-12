@@ -24,8 +24,8 @@ async def get_temporal_client() -> Client:
             if host:
                 target = f"{host}:{port}"
             else:
+                
                 target = "127.0.1.1:7233"
-        
         try:
             _client = await asyncio.wait_for(Client.connect(target), timeout=3.0)
         except Exception as e:

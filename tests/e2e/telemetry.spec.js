@@ -32,6 +32,40 @@ test.describe('User Story 2: Swarm Discovery & Real-Time Telemetry Mapping', () 
     expect(swarmNames).toMatch(/swarm|drone|alpha|bravo/i);
   });
 
+  test('T013b: should provision a new swarm via the "+ New Swarm" dialog and auto-select it', async ({ page }) => {
+    const newSwarmName = `Echo Patrol Swarm ${Date.now()}`;
+    const droneCount = 3;
+
+    // Verify Create Swarm button is visible
+    await expect(dashboardPage.createSwarmBtn).toBeVisible();
+
+    // Click "+ New Swarm" to open the provision modal
+    await dashboardPage.createSwarmBtn.click();
+    await expect(dashboardPage.createSwarmModal).toBeVisible();
+
+    // Fill in the swarm creation form
+    await dashboardPage.createSwarmNameInput.fill(newSwarmName);
+    await dashboardPage.createSwarmDronesInput.fill(String(droneCount));
+
+    // Submit the form and wait for the POST request
+    const createPromise = page.waitForResponse(
+      (res) => res.url().includes('/api/v1/swarms') && res.request().method() === 'POST' && res.status() === 201
+    );
+    await dashboardPage.createSwarmSubmitBtn.click();
+    await createPromise;
+
+    // Modal should close upon successful creation
+    await expect(dashboardPage.createSwarmModal).toBeHidden();
+
+    // Swarm selector should now contain and select the new swarm
+    await expect(dashboardPage.swarmSelect).toContainText(newSwarmName);
+    const selectedOption = await dashboardPage.swarmSelect.locator('option:checked').textContent();
+    expect(selectedOption).toContain(newSwarmName);
+
+    // Verify activity history logged the creation
+    await dashboardPage.expectHistoryContains(newSwarmName);
+  });
+
   test('T014: should trigger telemetry polling upon selecting an active swarm', async ({ page }) => {
     // Listen for telemetry API requests
     const telemetryPromise = page.waitForRequest(
