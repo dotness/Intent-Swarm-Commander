@@ -36,6 +36,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from src.uservice.security.middleware import auth_gateway_middleware
+from src.uservice.security.proxy import swarm_proxy_middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
+# Middlewares are executed in reverse order of addition (LIFO).
+# 1. CORS executes outermost (handles preflight OPTIONS and adds CORS headers to all responses)
+# 2. Auth Gateway validates JWT tokens
+# 3. Proxy routes swarm proxy requests
+app.add_middleware(BaseHTTPMiddleware, dispatch=swarm_proxy_middleware)
+app.add_middleware(BaseHTTPMiddleware, dispatch=auth_gateway_middleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,15 +53,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-from src.uservice.security.middleware import auth_gateway_middleware
-from src.uservice.security.proxy import swarm_proxy_middleware
-from starlette.middleware.base import BaseHTTPMiddleware
-
-# Middlewares are executed bottom-up.
-# Proxy first, then Auth Gateway
-app.add_middleware(BaseHTTPMiddleware, dispatch=swarm_proxy_middleware)
-app.add_middleware(BaseHTTPMiddleware, dispatch=auth_gateway_middleware)
 
 
 app.include_router(auth_router, prefix="/api/v1")

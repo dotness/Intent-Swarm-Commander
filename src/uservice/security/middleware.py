@@ -21,6 +21,9 @@ async def auth_gateway_middleware(request: Request, call_next: Callable) -> Resp
     unless the path is in PUBLIC_PATHS. Invalid or missing tokens result in
     401/403 responses — the system fails closed per FR-009.
     """
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
     path = request.url.path
 
     # Allow public paths through
