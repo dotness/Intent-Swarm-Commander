@@ -27,7 +27,8 @@ class AuthManager {
 
     async login(commanderId, passphrase) {
         try {
-            const response = await fetch('/api/v1/auth/login', {
+            const apiBase = (typeof API_BASE !== 'undefined') ? API_BASE : 'http://localhost:8000/api/v1';
+            const response = await fetch(`${apiBase}/auth/login`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
