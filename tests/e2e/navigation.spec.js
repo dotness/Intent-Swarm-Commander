@@ -75,6 +75,8 @@ test.describe('Tactical Navigation & Map Visualization: Point A to Point B Swarm
       });
     });
 
+    const SCREENSHOT_DIR = '/home/remi/.gemini/antigravity-ide/brain/3ed699e0-203d-43df-9568-348fd78eefab/screenshots';
+
     // ── Step 1: Login to Dashboard ──────────────────────────────────────────
     console.log('>>> [TEST] Starting Step 1: Login');
     await loginPage.goto();
@@ -83,6 +85,7 @@ test.describe('Tactical Navigation & Map Visualization: Point A to Point B Swarm
     await loginPage.expectModalHidden();
     await dashboardPage.expectAuthenticated();
     await mapComponent.expectMapLoaded();
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/step1_dashboard_authenticated.png` });
     console.log('>>> [TEST] Step 1 complete: Authenticated');
 
     // ── Step 2: Create a New Swarm ──────────────────────────────────────────
@@ -90,6 +93,7 @@ test.describe('Tactical Navigation & Map Visualization: Point A to Point B Swarm
     const swarmName = `Vector Navigation Swarm ${Date.now()}`;
     await dashboardPage.provisionSwarm(swarmName, 3);
     await expect(dashboardPage.swarmSelect).toContainText(swarmName);
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/step2_swarm_provisioned.png` });
     console.log('>>> [TEST] Step 2 complete: Swarm provisioned');
 
     // ── Step 3: Observe Swarm at Initial Position (Point A) on Tactical Map ──
@@ -101,6 +105,7 @@ test.describe('Tactical Navigation & Map Visualization: Point A to Point B Swarm
     await mapComponent.clickDroneMarker(0);
     await expect(mapComponent.popupContent).toContainText('holding_at_point_a');
     await expect(mapComponent.popupContent).toContainText(`Alt: ${pointA.alt_m}m`);
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/step3_point_a_marker.png` });
     console.log('>>> [TEST] Step 3 complete: Point A verified on Map');
 
     // ── Step 4: Issue Order to Move Swarm from Point A to Point B ───────────
@@ -129,6 +134,7 @@ test.describe('Tactical Navigation & Map Visualization: Point A to Point B Swarm
 
     // Tactical map renders the target flight trajectory between Point A and Point B
     await mapComponent.expectTargetAreaLayerVisible();
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/step4_order_flight_path.png` });
     console.log('>>> [TEST] Step 5 complete: Flight path visible on map');
 
     // ── Step 6: Swarm En-Route (Simulate In-Transit Telemetry) ───────────────
@@ -138,6 +144,7 @@ test.describe('Tactical Navigation & Map Visualization: Point A to Point B Swarm
 
     // Drone marker moves to waypoint on the map
     await mapComponent.expectDroneAt(52.5275, 13.4125);
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/step5_in_transit_marker.png` });
     console.log('>>> [TEST] Step 6 complete: In-transit position verified');
 
     // ── Step 7: Swarm Arrives at Point B (Observe on Tactical Map) ──────────
@@ -156,6 +163,7 @@ test.describe('Tactical Navigation & Map Visualization: Point A to Point B Swarm
     // Verify unit roster table also reflects arrival at Point B
     const rosterRow = page.locator('#roster-body tr').first();
     await expect(rosterRow).toContainText('arrived_at_point_b');
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/step6_point_b_arrived.png` });
     console.log('>>> [TEST] Step 7 complete: All assertions passed!');
   });
 });
