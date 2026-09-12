@@ -45,6 +45,25 @@ class SmeacPage {
     await expect(this.resultDiv).toContainText('Order Submitted Successfully');
   }
 
+  async expectExecuted() {
+    await expect(this.resultDiv).toBeVisible();
+    await expect(this.resultDiv).toContainText('Status: Executed');
+  }
+
+  /**
+   * Retrieve the submitted order ID from result banner
+   */
+  async getSubmittedOrderId() {
+    await expect(this.resultDiv).toBeVisible();
+    const idSpan = this.resultDiv.locator('#smeac-submitted-id');
+    if (await idSpan.count() > 0) {
+      return (await idSpan.textContent())?.trim();
+    }
+    const text = await this.resultDiv.textContent();
+    const match = text?.match(/Order ID:\s*([a-f0-9-]+)/i);
+    return match ? match[1] : null;
+  }
+
   /**
    * @param {string | RegExp} [expectedError]
    */

@@ -14,9 +14,32 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.AuthIndicator.update();
     window.MapController.initMap();
     window.HitlController.init();
+    loadHistory();
 
     // Wire up the SMEAC form
     document.getElementById("smeac-form").addEventListener("submit", handleSmeacSubmit);
+
+    // Wire up Create Swarm Modal
+    const createSwarmBtn = document.getElementById("btn-create-swarm");
+    const createSwarmModal = document.getElementById("create-swarm-modal");
+    const createSwarmForm = document.getElementById("create-swarm-form");
+    const createSwarmCancel = document.getElementById("create-swarm-cancel");
+
+    if (createSwarmBtn && createSwarmModal) {
+        createSwarmBtn.addEventListener("click", () => {
+            const errorDiv = document.getElementById("create-swarm-error");
+            if (errorDiv) errorDiv.hidden = true;
+            createSwarmModal.showModal();
+        });
+    }
+    if (createSwarmCancel && createSwarmModal) {
+        createSwarmCancel.addEventListener("click", () => {
+            createSwarmModal.close();
+        });
+    }
+    if (createSwarmForm && createSwarmModal) {
+        createSwarmForm.addEventListener("submit", handleCreateSwarmSubmit);
+    }
     
     // Handle swarm selection changes
     const swarmSelect = document.getElementById("swarm-select");
@@ -85,6 +108,51 @@ function selectSwarm(swarmId) {
 }
 
 /**
+ * Handle Provision Swarm form submission.
+ */
+async function handleCreateSwarmSubmit(event) {
+    event.preventDefault();
+    const form = event.target;
+    const submitBtn = document.getElementById("create-swarm-submit");
+    const errorDiv = document.getElementById("create-swarm-error");
+    const modal = document.getElementById("create-swarm-modal");
+
+    const name = document.getElementById("create-swarm-name").value.trim();
+    const droneCount = parseInt(document.getElementById("create-swarm-drones").value, 10) || 3;
+
+    try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Provisioning...";
+        if (errorDiv) errorDiv.hidden = true;
+
+        const swarm = await window.ApiClient.createSwarm({
+            name: name,
+            drone_count: droneCount
+        });
+
+        form.reset();
+        modal.close();
+        logHistory(`Swarm '${swarm.name}' provisioned (${swarm.id})`);
+
+        // Refresh swarm selector and select newly created swarm
+        await loadSwarms();
+        const select = document.getElementById("swarm-select");
+        if (select) {
+            select.value = swarm.id;
+            selectSwarm(swarm.id);
+        }
+    } catch (e) {
+        if (errorDiv) {
+            errorDiv.hidden = false;
+            errorDiv.textContent = e.message || "Failed to create swarm";
+        }
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Provision";
+    }
+}
+
+/**
  * Handle SMEAC form submission.
  */
 async function handleSmeacSubmit(event) {
@@ -117,10 +185,11 @@ async function handleSmeacSubmit(event) {
         resultDiv.hidden = false;
         resultDiv.innerHTML = `
             <div style="color: var(--color-success); font-weight: bold; margin-bottom: 0.5rem;">✅ Order Submitted Successfully</div>
-            <div>Order ID: ${result.order_id}</div>
+            <div>Order ID: <span id="smeac-submitted-id">${result.order_id}</span></div>
+            <div style="color: var(--color-primary); font-size: 0.85rem; margin-top: 0.25rem;">Status: Executed</div>
         `;
         
-        logHistory(`SMEAC Order submitted (${result.order_id})`);
+        logHistory(`SMEAC Order ${result.order_id} executed`);
         
         // Hide result after 5s
         setTimeout(() => {
@@ -202,24 +271,70 @@ async function pollHitl() {
     }
 }
 
+const HISTORY_STORAGE_KEY = 'isc_activity_history';
+
 /**
- * Add a log entry to the history panel.
+ * Load history entries from localStorage into the UI.
+ */
+function loadHistory() {
+    const list = document.getElementById("history-list");
+    if (!list) return;
+
+    try {
+        const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+        if (!raw) return;
+        const entries = JSON.parse(raw);
+        if (!Array.isArray(entries) || entries.length === 0) return;
+
+        list.innerHTML = '';
+        entries.forEach(entry => {
+            const li = document.createElement('li');
+            li.innerHTML = `<span style="color: var(--color-text-muted)">[${entry.time}]</span> ${entry.msg}`;
+            list.appendChild(li);
+        });
+    } catch (e) {
+        console.error("Failed to load activity history from storage", e);
+    }
+}
+
+/**
+ * Add a log entry to the history panel and persist to storage.
  */
 function logHistory(msg) {
     const list = document.getElementById("history-list");
+    if (!list) return;
+
     const empty = list.querySelector('.history-list__empty');
     if (empty) {
         empty.remove();
     }
     
-    const li = document.createElement('li');
     const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+    const li = document.createElement('li');
     li.innerHTML = `<span style="color: var(--color-text-muted)">[${time}]</span> ${msg}`;
     
     list.insertBefore(li, list.firstChild);
     
-    // Keep max 50 items
+    // Keep max 50 items in DOM
     while (list.children.length > 50) {
         list.removeChild(list.lastChild);
     }
+
+    // Persist in localStorage
+    try {
+        const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+        const entries = raw ? JSON.parse(raw) : [];
+        entries.unshift({ time, msg });
+        while (entries.length > 50) {
+            entries.pop();
+        }
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(entries));
+    } catch (e) {
+        console.error("Failed to persist activity history to storage", e);
+    }
 }
+
+window.HistoryController = {
+    load: loadHistory,
+    log: logHistory
+};

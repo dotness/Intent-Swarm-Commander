@@ -98,9 +98,58 @@ async function fetchTelemetry(swarmId) {
     }
 }
 
+/**
+ * Provision a new swarm instance.
+ */
+async function createSwarm(swarmData) {
+    try {
+        const res = await fetch(`${API_BASE}/swarms`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...window.authManager.getAuthHeader()
+            },
+            body: JSON.stringify(swarmData)
+        });
+        if (res.status === 401) { window.authManager.clearSession(); throw new Error("Unauthorized"); }
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || err.detail || "Failed to create swarm");
+        }
+        const json = await res.json();
+        return json.data || json;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
+/**
+ * Get status of an existing order.
+ */
+async function getOrderStatus(swarmId, orderId) {
+    try {
+        const res = await fetch(`${API_BASE}/swarms/${swarmId}/orders/${orderId}`, {
+            headers: window.authManager.getAuthHeader()
+        });
+        if (res.status === 401) { window.authManager.clearSession(); throw new Error("Unauthorized"); }
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || err.detail || "Failed to fetch order status");
+        }
+        const json = await res.json();
+        return json.data || json;
+    } catch (e) {
+        console.error(e);
+        throw e;
+    }
+}
+
 window.ApiClient = {
     fetchSwarms,
+    createSwarm,
     submitSmeac,
+    getOrderStatus,
     checkPendingHitl,
     fetchTelemetry
 };

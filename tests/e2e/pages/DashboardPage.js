@@ -16,6 +16,14 @@ class DashboardPage {
     this.swarmSelect = page.locator('#swarm-select');
     this.smeacPanel = page.locator('#smeac-panel');
     this.mapPanel = page.locator('#map-panel');
+    this.historyList = page.locator('#history-list');
+
+    // Create Swarm modal locators
+    this.createSwarmBtn = page.locator('#btn-create-swarm');
+    this.createSwarmModal = page.locator('#create-swarm-modal');
+    this.createSwarmNameInput = page.locator('#create-swarm-name');
+    this.createSwarmDronesInput = page.locator('#create-swarm-drones');
+    this.createSwarmSubmitBtn = page.locator('#create-swarm-submit');
   }
 
   async expectLoaded() {
@@ -74,6 +82,40 @@ class DashboardPage {
       }
     }
     throw new Error('No valid swarm option found');
+  }
+
+  /**
+   * Provision a new swarm via the dashboard modal
+   * @param {string} name
+   * @param {number} [droneCount=3]
+   */
+  async provisionSwarm(name, droneCount = 3) {
+    await this.createSwarmBtn.click();
+    await expect(this.createSwarmModal).toBeVisible();
+    await this.createSwarmNameInput.fill(name);
+    await this.createSwarmDronesInput.fill(String(droneCount));
+    await this.createSwarmSubmitBtn.click();
+    await expect(this.createSwarmModal).toBeHidden();
+
+    // Verify the newly created swarm is present and selected
+    await expect(this.swarmSelect).toContainText(name);
+    const selectedOption = await this.swarmSelect.locator('option:checked').textContent();
+    expect(selectedOption).toContain(name);
+  }
+
+  /**
+   * Check if history contains a specific text snippet
+   * @param {string | RegExp} snippet
+   */
+  async expectHistoryContains(snippet) {
+    await expect(this.historyList).toContainText(snippet);
+  }
+
+  /**
+   * Retrieve all text items from the activity history
+   */
+  async getHistoryItems() {
+    return await this.historyList.locator('li').allTextContents();
   }
 }
 
