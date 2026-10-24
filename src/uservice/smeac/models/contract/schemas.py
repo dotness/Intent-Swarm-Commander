@@ -17,16 +17,6 @@ class SmeacOrderCreateRequest(BaseModel):
     command_signal: str | None = Field(default=None, description="Command and signal details")
 
 
-class SmeacOrderResponse(BaseModel):
-    """Response after creating a SMEAC order."""
-
-    order_id: uuid.UUID
-    status: str
-    swarm_instance_id: uuid.UUID
-    parsed_fields: dict[str, str]
-    created_at: datetime
-
-
 class SwarmCommandResponse(BaseModel):
     """Individual command in an order status response."""
 
@@ -39,6 +29,18 @@ class SwarmCommandResponse(BaseModel):
     altitude_m: float | None
     is_high_impact: bool
     verification_status: str = "pending"
+
+
+class SmeacOrderResponse(BaseModel):
+    """Response after creating a SMEAC order."""
+
+    order_id: uuid.UUID
+    status: str
+    swarm_instance_id: uuid.UUID
+    parsed_fields: dict[str, str]
+    created_at: datetime
+    commands: list[SwarmCommandResponse] = []
+    reasoning: str | None = None
 
 
 class OrderStatusResponse(BaseModel):

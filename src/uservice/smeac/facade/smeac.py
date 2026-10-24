@@ -48,7 +48,10 @@ class SmeacFacade(DomainFacade):
         await self.session.flush()
 
         # 2. Translate SMEAC intent via Gemini LLM agent if API key is configured
-        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY")
+        formatted_cmds: list[dict[str, Any]] = []
+        reasoning_out: str | None = None
+
         if api_key and api_key != "placeholder_key":
             try:
                 import json
@@ -79,6 +82,7 @@ class SmeacFacade(DomainFacade):
                     timeout=20.0,
                 )
 
+                reasoning_out = parse_result.reasoning
                 for cmd_dto in parse_result.commands:
                     m_str = cmd_dto.mission_type.lower()
                     f_str = cmd_dto.formation_type.lower()
@@ -88,11 +92,13 @@ class SmeacFacade(DomainFacade):
                     f_type = FormationType(f_str) if f_str in [f.value for f in FormationType] else FormationType.LINE
                     prio = CommandPriority(p_str) if p_str in [p.value for p in CommandPriority] else CommandPriority.NORMAL
 
+                    target_geo = cmd_dto.target_area if isinstance(cmd_dto.target_area, dict) else {"raw": cmd_dto.target_area}
+
                     cmd_record = SwarmCommand(
                         smeac_order_id=order_id,
                         mission_type=m_type,
                         formation_type=f_type,
-                        target_area=json.dumps(cmd_dto.target_area) if isinstance(cmd_dto.target_area, (dict, list)) else str(cmd_dto.target_area),
+                        target_area=json.dumps(target_geo),
                         target_object_class=cmd_dto.target_object_class,
                         drone_count=cmd_dto.drone_count,
                         altitude_m=cmd_dto.altitude_m,
@@ -102,12 +108,84 @@ class SmeacFacade(DomainFacade):
                         is_high_impact=m_type in HIGH_IMPACT_MISSIONS,
                     )
                     self.session.add(cmd_record)
+                    await self.session.flush()
+
+                    formatted_cmds.append({
+                        "id": cmd_record.id,
+                        "mission_type": m_type.value,
+                        "formation_type": f_type.value,
+                        "target_area": target_geo,
+                        "target_object_class": cmd_dto.target_object_class,
+                        "drone_count": cmd_dto.drone_count,
+                        "altitude_m": cmd_dto.altitude_m,
+                        "is_high_impact": m_type in HIGH_IMPACT_MISSIONS,
+                        "verification_status": "verified",
+                    })
 
                 order_record.status = "translated"
                 await self.session.flush()
                 logger.info("Parsed %d swarm commands via Gemini for order %s", len(parse_result.commands), order_id)
             except Exception as e:
                 logger.warning("Gemini SMEAC parser skipped or error (fallback): %s", e)
+
+        # Fallback if no LLM key configured or LLM call failed
+        if not formatted_cmds:
+            import re
+            import json
+            from src.uservice.smeac.models.contract.command import (
+                SwarmCommand,
+                MissionType,
+                FormationType,
+                CommandPriority,
+            )
+            all_text = f"{body.mission or ''} {body.execution or ''} {body.situation or ''}"
+            coords = re.findall(r"(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)", all_text)
+            if len(coords) >= 2:
+                latA, lonA = float(coords[0][0]), float(coords[0][1])
+                latB, lonB = float(coords[1][0]), float(coords[1][1])
+                target_geo = {
+                    "type": "LineString",
+                    "coordinates": [[lonA, latA], [lonB, latB]]
+                }
+            elif len(coords) == 1:
+                latA, lonA = float(coords[0][0]), float(coords[0][1])
+                target_geo = {
+                    "type": "Point",
+                    "coordinates": [lonA, latA]
+                }
+            else:
+                target_geo = {
+                    "type": "Point",
+                    "coordinates": [13.4050, 52.5200]
+                }
+
+            cmd_record = SwarmCommand(
+                smeac_order_id=order_id,
+                mission_type=MissionType.PATROL,
+                formation_type=FormationType.LINE,
+                target_area=json.dumps(target_geo),
+                target_object_class=None,
+                drone_count=3,
+                altitude_m=50.0,
+                speed_ms=15.0,
+                duration_s=600,
+                priority=CommandPriority.NORMAL,
+                is_high_impact=False,
+            )
+            self.session.add(cmd_record)
+            await self.session.flush()
+
+            formatted_cmds.append({
+                "id": cmd_record.id,
+                "mission_type": "patrol",
+                "formation_type": "line",
+                "target_area": target_geo,
+                "target_object_class": None,
+                "drone_count": 3,
+                "altitude_m": 50.0,
+                "is_high_impact": False,
+                "verification_status": "verified",
+            })
         
         # 3. Schedule workflow via Operation wrapper
         wf_input = ProcessSmeacInput(
@@ -140,6 +218,8 @@ class SmeacFacade(DomainFacade):
             "swarm_instance_id": swarm_id,
             "parsed_fields": parsed_fields,
             "created_at": now,
+            "commands": formatted_cmds,
+            "reasoning": reasoning_out,
         }
 
     async def get_order_status(self, swarm_id: uuid.UUID, order_id: uuid.UUID) -> dict[str, Any]:

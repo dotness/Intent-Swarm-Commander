@@ -53,6 +53,15 @@ Swarm Commands.
 Rules:
 - Each command MUST specify mission_type, formation_type, target_area (GeoJSON),
   drone_count, and priority.
+- target_area MUST be a valid GeoJSON geometry dictionary:
+  * For transit, waypoint movement, relocation, or patrol between locations (e.g. Point A to Point B), generate:
+    {"type": "LineString", "coordinates": [[lon1, lat1], [lon2, lat2], ...]}
+    IMPORTANT: In standard GeoJSON, coordinates are ordered [longitude, latitude]!
+  * For area coverage or surveillance zones, generate:
+    {"type": "Polygon", "coordinates": [[[lon1, lat1], [lon2, lat2], [lon3, lat3], [lon1, lat1]]]}
+  * For a single stationary waypoint or point target, generate:
+    {"type": "Point", "coordinates": [lon, lat]}
+- If explicit latitude/longitude coordinates (such as 52.5200, 13.4050) are mentioned anywhere in the Situation, Mission, or Execution text, extract them accurately into target_area coordinates [longitude, latitude].
 - If the Execution field mentions a specific formation, use it. Otherwise infer
   the best formation for the mission type.
 - If the mission is "strike" or "abort", flag it as high-impact.

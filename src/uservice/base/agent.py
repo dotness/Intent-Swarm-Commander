@@ -33,8 +33,8 @@ def create_agent(
 ) -> Agent:
     """Factory that creates a pydantic-ai Agent with ISC defaults.
 
-    Defaults to Google Gemini (e.g. gemini-1.5-flash) using GEMINI_API_KEY
-    or GOOGLE_API_KEY. Can be configured via the LLM_MODEL environment variable.
+    Defaults to Google Gemini (e.g. gemini-1.5-flash) using GEMINI_API_KEY.
+    Can be configured via the LLM_MODEL environment variable.
 
     Parameters
     ----------
@@ -52,20 +52,17 @@ def create_agent(
     if model is None:
         model = os.getenv("LLM_MODEL", "gemini-1.5-flash")
 
-    # Bridge GEMINI_API_KEY and GOOGLE_API_KEY for pydantic-ai / Google GenAI SDK
-    gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+    # Bridge GEMINI_API_KEY internally for pydantic-ai GoogleProvider
+    gemini_key = os.getenv("GEMINI_API_KEY")
     if gemini_key:
-        if not os.getenv("GOOGLE_API_KEY"):
-            os.environ["GOOGLE_API_KEY"] = gemini_key
-        if not os.getenv("GEMINI_API_KEY"):
-            os.environ["GEMINI_API_KEY"] = gemini_key
+        os.environ["GOOGLE_API_KEY"] = gemini_key
     elif "gemini" in model.lower() or "google" in model.lower():
-        # Set placeholder to prevent initialization crash on module import if key not yet set
-        logger.warning(
-            "GEMINI_API_KEY / GOOGLE_API_KEY not configured. Initializing agent '%s' with placeholder.",
-            name,
-        )
-        os.environ["GOOGLE_API_KEY"] = "placeholder_key"
+        if not os.getenv("GOOGLE_API_KEY"):
+            logger.warning(
+                "GEMINI_API_KEY not configured. Initializing agent '%s' with placeholder.",
+                name,
+            )
+            os.environ["GOOGLE_API_KEY"] = "placeholder_key"
 
     logger.info("Creating agent '%s' with model=%s", name, model)
 
