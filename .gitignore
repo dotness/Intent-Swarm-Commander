@@ -42,3 +42,7 @@ htmlcov/
 node_modules/
 playwright-report/
 test-results/
+
+# Generated Documents
+*.pdf
+

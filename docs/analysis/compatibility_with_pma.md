@@ -250,11 +250,327 @@ A commander on the ISC Tactical Dashboard can prompt the assistant:
 
 ---
 
-## 5. Infrastructure Coexistence & Deployment Strategy
+## 5. Comprehensive Pros & Cons Analysis of Integration
 
-Both systems use Docker Compose for local execution. Running both simultaneously requires clean network bridging and non-conflicting port allocation.
+Evaluating the integration of **Poor-Man's Artemis.IA** into **Intent-Swarm-Commander** requires weighing the significant operational and architectural advantages against the added infrastructure and tactical networking complexities.
 
-### 5.1 Port Allocation Matrix
+### 5.1 The Pros (Strategic & Technical Advantages)
+
+#### 1. Architectural Alignment & Zero Cognitive Friction
+* **Shared `uservice-template` DNA**: Both projects follow identical Domain-Driven Design (DDD) subpackage structures (`api/`, `facade/`, `models/`, `operations/`), clean architecture boundaries, Pydantic type validation, and asynchronous Temporal workflows.
+* **Unified Development Velocity**: Engineers familiar with ISC can inspect, maintain, and extend PMA domains (`ingestion`, `analytics`, `graph`, `discovery`, `ai`) without learning new idioms or conventions.
+
+#### 2. Resolving the Swarm Telemetry Scalability Bottleneck
+* **Elimination of HTTP Polling**: Replacing ISC's current `GET :8090/telemetry` polling pattern with **Eclipse Mosquitto MQTT** (`:1883`) allows a single command node to ingest 1,000+ telemetry packets per second with sub-5ms latency and under 20 MB of broker RAM.
+* **Decoupled Crash-Resilient Ingestion**: Edge drones stream events to Mosquitto, which appends to a local POSIX disk buffer before micro-batch compaction into Apache Arrow / Parquet. The central database is protected against write spikes and connection flooding.
+
+#### 3. Sovereign, Low-Footprint Lakehouse (Zero JVM Overhead)
+* **Under 12 GB RAM Footprint**: Unlike traditional big data stacks (Apache Kafka, Hadoop HDFS, Spark, Neo4j, Trino) that require 32–64+ GB of RAM just for JVM runtimes, PMA relies entirely on native C/C++ (Mosquitto, DuckDB, Memgraph, Redis, Postgres) and Go (MinIO, Traefik).
+* **Forward-Deployable**: The integrated stack can operate on a single ruggedized edge server, tactical vehicle computer, or expeditionary Command Post (FOB) without dedicated cloud infrastructure.
+
+#### 4. Instant Vectorized After-Action Review (AAR) & Fleet Analytics
+* **Sub-Second Columnar SQL with DuckDB**: Flight controllers and commanders can query months of fleet telemetry directly from MinIO Parquet files (`s3://telemetry/**/*.parquet`) without importing data into a relational database.
+* **Predictive Fleet Maintenance**: Enables automated detection of battery degradation, motor vibration anomalies, radio signal dead zones, and formation drift across dozens of UAVs simultaneously.
+
+#### 5. Dynamic Tactical Situational Awareness (Memgraph Graph Engine)
+* **From Static JSON to Dynamic Threat Graph**: Replaces ISC's hardcoded `config/restricted_zones.json` with a live property graph in Memgraph.
+* **Multi-Hop Threat Interception**: The `GuardianCriticAgent` can compute real-time spatial intercepts against dynamic enemy radar cones, mobile surface-to-air missile (SAM) envelopes, electronic warfare jammer bubbles, and friendly artillery corridors via openCypher.
+
+#### 6. End-to-End Target Lineage & Sensor Fusion
+* **YOLO-E Detection Archival**: Edge vision detections (bounding boxes, confidence, class, estimated GPS) are ingested, cataloged, and paired with thumbnail image snapshots stored in MinIO.
+* **Knowledge Discovery Graph (KDG) Correlation**: Detections are linked to known adversary assets using entity resolution (`Rapidfuzz` + DSU), providing historical tracking of enemy equipment across multiple missions.
+
+#### 7. Intelligence-Driven SMEAC Synthesis
+* **Dynamic Multi-Tool AI Agent**: Leverages PMA's `DynamicAgentLoop` (with 6 read-only database tools) to answer high-level commander tactical queries and autonomously generate drafted SMEAC mission orders grounded in real operational data.
+
+---
+
+### 5.2 The Cons (Technical Challenges & Trade-offs)
+
+#### 1. Increased Infrastructure & Container Footprint
+* **Container Expansion**: Adds 7 infrastructure services (Traefik, Mosquitto, MinIO, Memgraph, Redis, Temporal-UI, and the Docker pipeline runner) to ISC's existing 6 containers.
+* **Volume & Credential Management**: Requires managing multiple persistent storage volumes (`minio_data`, `memgraph_data`, `mosquitto_data`, `redis_data`) and securing service-to-service secrets across containers.
+
+#### 2. Tactical Network & Comms Vulnerability (DDIL / EW Environments)
+* **Reliance on Ingress Connectivity**: MQTT connections assume continuous or intermittent IP reachability between drones and the command post. In Contested / Denied / Degraded / Intermittent / Limited (DDIL) or active Electronic Warfare (EW) jamming environments, drones cannot stream live telemetry.
+* **Requirement for Edge Buffering**: Edge drones (Raspberry Pi 5) must implement local persistent SQLite or disk-spool buffering to cache telemetry during radio blackouts and replay it upon reconnect.
+
+#### 3. Cloud API Dependency for Complex AI Reasoning
+* **Google AI Studio Reliance**: PMA offloads multi-agent token generation to `gemini-2.5-flash-lite` via Google AI Studio to preserve local CPU/RAM.
+* **Sovereignty & Air-Gap Constraint**: In fully air-gapped or classified operations without internet/satellite backhaul, cloud LLM calls will fail fast (`ServiceUnavailableError`). To operate air-gapped, ISC must either fall back to deterministic planning or host a local quantized model (e.g. Llama-3 / Gemma via Ollama or vLLM), which will increase RAM consumption by 8–16 GB.
+
+#### 4. Cross-Repository Schema Governance
+* **Coupling of Data Contracts**: Changes to ISC edge telemetry formats, YOLO-E classes, or SMEAC command parameters require synchronized updates to PMA's Arrow schemas, DuckDB SQL views, and Memgraph graph models.
+* **Version Drift**: Without unified CI/CD integration, version drift between ISC and PMA could lead to silent ingestion failures or unparsed telemetry attributes.
+
+#### 5. Local Development Resource Competition
+* **Simultaneous Simulation Load**: Running PX4 Autopilot, ROS 2 bridge, Gazebo 3D simulation with GUI rendering alongside the full PMA big data stack on a standard developer laptop will compete heavily for CPU cores, disk I/O, and RAM. Developers must run Gazebo in headless mode or utilize a dedicated workstation/VM.
+
+---
+
+### 5.3 Comparative Decision Matrix
+
+| Dimension | Standalone ISC (Current MVP) | Integrated ISC + Poor-Man's Artemis.IA |
+| :--- | :--- | :--- |
+| **Telemetry Scalability** | Low (HTTP polling breaks at > 5 drones) | **Very High** (MQTT handles 1,000+ evt/s, 100+ drones) |
+| **Data Retention** | Ephemeral (in-memory state, lost on restart) | **Permanent** (Columnar Parquet Lakehouse in MinIO) |
+| **After-Action Analytics**| None (basic Postgres queries only) | **Instant Vectorized SQL** (DuckDB direct Parquet queries) |
+| **Airspace Safety Model** | Static JSON (`restricted_zones.json`) | **Dynamic Threat Graph** (Memgraph openCypher spatial queries) |
+| **Edge Vision Detections**| Discarded after local tracking | **Persisted & Correlated** (MinIO snapshots + KDG entity linking) |
+| **Operational Planning** | Manual text entry of SMEAC orders | **AI-Assisted** (DynamicAgentLoop synthesizes drafted orders) |
+| **Idle Memory Footprint**| Low (~1.5 GB RAM) | **Medium (~3.5–4.5 GB RAM, zero JVM)** |
+| **Container Count** | 6 containers | 13 containers |
+| **Air-Gap Readiness** | High (fully local) | Medium (requires local LLM fallback for AI queries) |
+| **Engineering Effort** | Baseline | Moderate (MQTT client on edge + Memgraph client in critic) |
+
+---
+
+## 6. Round-Trip Time (RTT) Analysis & Physical Placement Strategy
+
+To guarantee operational flight safety, deterministic mission orchestration, and responsive command-and-control, the communication links and Round-Trip Times (RTT) between components must be rigorously partitioned.
+
+### 6.1 Inter-Component Communication & Latency Budget Matrix
+
+The following table details the protocol, payload characteristics, maximum tolerable latency (SLA), and expected real-world RTT across different network environments:
+
+| Path / Inter-Component Link | Protocol | Typical Payload | Max Allowable SLA | Local LAN / Host RTT | Tactical MANET RTT | Satcom / Cloud WAN RTT | Quality Impact of High Latency |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **PX4 Autopilot $\leftrightarrow$ MAVSDK / FlightController** | MAVLink (UART / UDP loopback) | 28–256 B @ 10–50 Hz | **< 10 ms** (Hard Real-Time) | `< 2 ms` | *Not Allowed* | *Not Allowed* | **Critical**: High latency triggers autopilot failsafe (RTL or Emergency Land). Must remain on-drone. |
+| **YOLO-E $\leftrightarrow$ Local FlightController** | In-Process Python / IPC | Tensor Bounding Boxes @ 30 FPS | **< 35 ms** (Real-Time) | `10–25 ms` | *Not Allowed* | *Not Allowed* | **High**: Loss of visual target tracking lock; missed target intercepts. Must remain on-drone. |
+| **Edge Drone (Pi 5) $\rightarrow$ Mosquitto MQTT** | MQTT QoS 0 / 1 (TCP port 1883) | 500 B JSON telemetry @ 5–20 Hz | **< 100 ms** (Soft Real-Time) | `2–5 ms` | `10–25 ms` | `250–800 ms` (+ packet loss) | **High**: Dashboard telemetry lag; jumpy map icons; delayed target alerts. Requires local MANET. |
+| **ISC Backend $\leftrightarrow$ Temporal Engine** | gRPC (HTTP/2 port 7233) | 2–15 KB workflow states & activities | **< 20 ms** (Low Latency) | `< 2 ms` | `15–40 ms` | `120–450 ms` | **Severe**: High RTT causes activity heartbeat timeouts, false workflow retries, and task queue starvation. |
+| **Guardian Critic $\leftrightarrow$ Memgraph Bolt** | openCypher over Bolt (TCP port 7687) | 1–5 KB Cypher spatial queries | **< 50 ms** (Interactive) | `1–4 ms` | `12–30 ms` | `150–500 ms` | **Moderate**: Slows down SMEAC validation and order approval gating; frustrates commander. |
+| **Dashboard $\leftrightarrow$ ISC Backend** | HTTP REST & WebSocket (port 8000/8080) | 1–20 KB map telemetry & HITL state | **< 100 ms** (Interactive UI) | `< 5 ms` | `15–30 ms` | `120–350 ms` | **Low-Medium**: UI responsiveness and map marker fluidity. |
+| **DuckDB Engine $\leftrightarrow$ MinIO Parquet** | S3 API (HTTP port 9000) | Multi-MB columnar chunk reads | **< 2,000 ms** (Batch OLAP) | `5–25 ms` (300+ MB/s) | `200–1,500 ms` | `3,000–15,000 ms` | **High for AAR**: Remote S3 reads over tactical radio throttle vectorized query performance by 95%. |
+| **DynamicAgentLoop $\leftrightarrow$ Google AI Studio** | HTTPS REST (Cloud API) | 5–50 KB prompt / function calling | **< 3,000 ms** (Cognitive Planning)| `800–1,500 ms` | `1,200–2,500 ms` | `1,500–4,000 ms` | **Low**: Planning is an asynchronous pre-mission task. Acceptable over satellite backhaul. |
+
+---
+
+### 6.2 The Three Physical Deployment Tiers
+
+Physical placement must align with computational limits, RF constraints, and environmental hazards:
+
+```
++-----------------------------------------------------------------------------------------+
+| TIER 1: AERIAL SWARM EDGE (Onboard UAV - Raspberry Pi 5 & PX4)                          |
+| - Execution: PX4 Autopilot, MAVSDK, Camera, YOLO-E Inference, Local SQLite Disk Spool   |
+| - Constraints: Battery power (15-40 min), strict SWaP-C, high RF jamming risk           |
++-----------------------------------------------------------------------------------------+
+                                         |
+                       Tactical MANET / Mesh RF Link
+                       (Silvus / TrellisWare / Wi-Fi 6)
+                       Latency: 5-20 ms | Throughput: 5-30 Mbps
+                                         v
++-----------------------------------------------------------------------------------------+
+| TIER 2: TACTICAL EDGE / FORWARD OPERATING BASE (Rugged Vehicle Server / TOC Laptop)     |
+| - Execution: Mosquitto Broker, ISC Backend, Temporal Engine, Local Memgraph Threat DB,  |
+|              Postgres DB, Tactical Web Dashboard (:8080)                                |
+| - Constraints: 16-32 GB RAM, 8 vCPUs, generator/battery powered, intermittent internet |
++-----------------------------------------------------------------------------------------+
+                                         |
+                       Long-Haul Backhaul / Satellite Link
+                       (Starlink / SATCOM / 5G / Fiber)
+                       Latency: 80-600 ms | Throughput: 2-50 Mbps (Degraded/DDIL)
+                                         v
++-----------------------------------------------------------------------------------------+
+| TIER 3: STRATEGIC HEADQUARTERS / CENTRAL CLOUD (Regional Command Data Center)           |
+| - Execution: Global MinIO Parquet Lakehouse, Fleet-Wide DuckDB AAR Analytics,           |
+|              Universal KDG Knowledge Graph, Google AI Studio / Gemini API Link          |
+| - Constraints: Enterprise datacenter, high availability, cross-theater aggregation      |
++-----------------------------------------------------------------------------------------+
+```
+
+---
+
+## 7. Deployment Topologies for Maximum Operational Quality
+
+To achieve the best balance of **sub-millisecond flight control**, **low-latency telemetry**, and **deep strategic analytics**, three deployment topologies are evaluated.
+
+### 7.1 Option A: Monolithic Tactical Edge ("TOC All-in-One")
+* **Concept**: The entire integrated stack (ISC + all 8 PMA services) is deployed as Docker containers directly onto a single ruggedized server (e.g. 32 GB RAM, 8–16 core CPU) located inside the mobile Command Vehicle or Tactical Operations Center (TOC).
+* **Communication Geometry**:
+  - Drones stream directly to the TOC server over line-of-sight (LOS) tactical MANET (Silvus / TrellisWare).
+  - RTT between Drones and Mosquitto: **5–15 ms**.
+  - RTT between ISC Backend, Temporal, Memgraph, and DuckDB: **< 2 ms** (IPC/local loopback).
+* **Quality Profile**:
+  - **Flight Safety & Control**: **10/10** (Zero external network dependencies).
+  - **Telemetry Resolution**: **10/10** (Full 20 Hz telemetry streaming without data drops).
+  - **AAR Query Speed**: **10/10** (Local disk NVMe S3 access executes in < 0.2s).
+  - **DDIL / Jamming Resilience**: **10/10** (Functions 100% offline).
+  - **AI Reasoning**: **6/10** (Requires satellite backhaul for Google AI Studio; if jammed, must fall back to local rule-based planning).
+* **Best Suited For**: Expeditionary, highly contested operations where cloud access is strictly forbidden or permanently jammed.
+
+---
+
+### 7.2 Option B: Tiered Split Edge-Cloud ("Tactical C2 Edge + Strategic Cloud Lakehouse") — RECOMMENDED FOR BEST OVERALL QUALITY
+
+```mermaid
+flowchart TD
+    %% Node Declarations
+    subgraph Tier1 ["Tier 1: Aerial Swarm Edge (Onboard UAVs)"]
+        UAV1["UAV Alpha-1 (Pi 5: PX4 + YOLO-E + Spool Buffer)"]
+        UAV2["UAV Alpha-2 (Pi 5: PX4 + YOLO-E + Spool Buffer)"]
+    end
+
+    subgraph Tier2 ["Tier 2: Tactical Edge / TOC Vehicle (Sub-15ms RTT)"]
+        TOC_Mosquitto["TOC Mosquitto MQTT Broker (:1883)"]
+        TOC_Buffer["Local Ingestion Disk Buffer"]
+        TOC_ISC["ISC Backend & Safety Critic (:8000)"]
+        TOC_Temporal["Temporal Workflow Engine (:7233)"]
+        TOC_Memgraph["Local Memgraph (Active Threats & Airspace)"]
+        TOC_Dashboard["Tactical Dashboard UI (:8080)"]
+    end
+
+    subgraph Tier3 ["Tier 3: Strategic Cloud / HQ (High-Power Compute)"]
+        HQ_MinIO["Global MinIO S3 Parquet Lakehouse"]
+        HQ_DuckDB["DuckDB Multi-Fleet AAR Engine"]
+        HQ_KDG["Universal Knowledge Discovery Graph (KDG)"]
+        HQ_ADK["Google ADK Multi-Agent Loop (Gemini API)"]
+    end
+
+    %% Connections
+    UAV1 -->|"Telemetry & Targets (5-15ms MANET)"| TOC_Mosquitto
+    UAV2 -->|"Telemetry & Targets (5-15ms MANET)"| TOC_Mosquitto
+    TOC_Mosquitto --> TOC_Buffer
+    TOC_Buffer --> TOC_ISC
+    TOC_ISC <-->|"Fast State (< 2ms)"| TOC_Temporal
+    TOC_ISC <-->|"Threat Gating (< 3ms)"| TOC_Memgraph
+    TOC_Dashboard <--> TOC_ISC
+
+    %% Asynchronous Replication to HQ
+    TOC_Buffer -.->|"Asynchronous Micro-Batch Sync (When Link Active)"| HQ_MinIO
+    TOC_Memgraph -.->|"Threat Intelligence Replication"| HQ_KDG
+    HQ_MinIO --> HQ_DuckDB
+    HQ_ADK <--> HQ_DuckDB
+    HQ_ADK <--> HQ_KDG
+    HQ_ADK -.->|"Drafted SMEAC Orders (Satcom)"| TOC_ISC
+```
+
+#### Why Option B Delivers the Highest Quality:
+1. **Low-Latency Isolation**: The mission-critical loop (UAV flight commands $\leftrightarrow$ MAVSDK, live telemetry $\leftrightarrow$ Mosquitto, safety gating $\leftrightarrow$ Memgraph) runs exclusively on the Tactical Edge at **sub-15ms latency**. Tactical safety is never degraded by cloud latency or satellite dropout.
+2. **Bandwidth-Efficient Asynchronous Sync**: High-frequency raw sensor data is ingested and buffered locally at the TOC. When satellite or LTE backhaul is available, compacted Apache Arrow/Parquet batches sync to the Central Cloud MinIO lakehouse asynchronously in the background.
+3. **Cross-Fleet Strategic Intelligence**: Strategic commanders at HQ use DuckDB and Memgraph KDG to query historical flight logs across all squadrons worldwide, discovering recurring electronic warfare zones, vehicle patterns, and fleet health degradation.
+4. **Resilient AI Planning**: Complex SMEAC order synthesis using the 6-tool `DynamicAgentLoop` and Google AI Studio is computed in the Cloud where bandwidth is plentiful, and the resulting structured SMEAC plan is pushed down to the TOC for HITL confirmation.
+
+---
+
+### 7.3 Option C: Airborne Relay / Hierarchical Swarm Gateway
+* **Concept**: A high-end endurance UAV (e.g. fixed-wing relay drone equipped with an NVIDIA Jetson Orin or dual-radio Pi 5) acts as an airborne edge gateway flying above the swarm.
+* **Communication Geometry**:
+  - Recon drones stream to the Relay Drone over 5 GHz short-range Wi-Fi mesh (**2–5 ms RTT**).
+  - The Relay Drone aggregates telemetry, applies local target filtering, and relays compressed data to the ground TOC over a long-range directional radio (C-Band / COFDM).
+* **Quality Profile**:
+  - **Operating Range**: Triples the operational radius of low-power multirotor drones.
+  - **Complexity**: High (requires maintaining an airborne relay node and aerial link routing).
+* **Best Suited For**: Beyond Visual Line of Sight (BVLOS) operations, urban terrain with severe building shadowing, or mountainous valleys.
+
+---
+
+### 7.4 Topology Evaluation & Recommendation Matrix
+
+| Architectural Metric | Option A: Monolithic Tactical Edge | Option B: Tiered Split Edge-Cloud (Recommended) | Option C: Airborne Relay Gateway |
+| :--- | :--- | :--- | :--- |
+| **Flight Control RTT** | **< 2 ms** (Direct local) | **< 2 ms** (Direct local) | **< 2 ms** (Direct local) |
+| **Telemetry Ingestion RTT** | **5–15 ms** (Tactical MANET) | **5–15 ms** (Tactical MANET) | **2–5 ms** (In-flight mesh) |
+| **Dynamic Threat Gating RTT** | **< 5 ms** (Local Memgraph) | **< 5 ms** (Local Memgraph) | **15–30 ms** (Relayed to ground) |
+| **After-Action Review Speed** | Fast (< 0.5s local DuckDB) | **Fastest** (HQ Cloud multi-core DuckDB) | Moderate (Dependent on ground sync) |
+| **Tolerance to Comms Jamming** | **100% Survivable** (Fully local) | **100% Operational** (Queues sync for later) | High (Mesh survives LOS ground drops) |
+| **Strategic Cross-Mission Intel**| Low (Isolated to local vehicle) | **Maximum** (Centralized KDG & Lakehouse) | Moderate |
+| **Hardware Footprint at Frontline**| 1 Rugged Server (32 GB RAM) | 1 Rugged Laptop/Server (16 GB RAM) | 1 Rugged Server + 1 Relay UAV |
+| **Deployment Complexity** | Low (Single Docker Compose) | Moderate (Split sync + secure tunnel) | High (Airborne mesh management) |
+
+---
+
+## 8. Concrete Configuration for Option B (Recommended Deployment)
+
+To configure **Option B** using Docker Compose across the Tactical Edge and Central Cloud:
+
+### 8.1 Tactical Edge (`docker-compose.tactical.yml`)
+Runs at the Forward Operating Base / Command Vehicle:
+```yaml
+services:
+  # 1. High-throughput edge ingestion
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports: ["1883:1883"]
+    volumes: ["./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro"]
+
+  # 2. Tactical threat awareness
+  memgraph:
+    image: memgraph/memgraph:latest
+    ports: ["7687:7687"]
+
+  # 3. Mission state machine
+  temporal:
+    image: temporalio/auto-setup:1.24
+    ports: ["7233:7233"]
+    environment:
+      - POSTGRES_SEEDS=postgres
+    depends_on: [postgres]
+
+  # 4. Relational & operational metadata
+  postgres:
+    image: postgres:16-alpine
+    ports: ["5432:5432"]
+    environment:
+      - POSTGRES_USER=isc_user
+      - POSTGRES_PASSWORD=isc_pass
+      - POSTGRES_DB=isc_db
+
+  # 5. Intent-Swarm-Commander Backend & Safety Critic
+  isc_backend:
+    build: { context: ., dockerfile: Dockerfile.backend }
+    ports: ["8000:8000"]
+    environment:
+      - MQTT_HOST=mosquitto
+      - MEMGRAPH_URI=bolt://memgraph:7687
+      - TEMPORAL_URL=temporal:7233
+      - DATABASE_URL=postgresql+asyncpg://isc_user:isc_pass@postgres:5432/isc_db
+
+  # 6. Tactical Map & HITL Dashboard
+  dashboard:
+    image: python:3.11-alpine
+    command: python3 -m http.server 8080 -d /app/src/dashboard
+    ports: ["8080:8080"]
+```
+
+### 8.2 Strategic HQ Cloud (`docker-compose.hq.yml`)
+Runs in the Regional Command Datacenter / Cloud:
+```yaml
+services:
+  # 1. Centralized S3 Lakehouse
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports: ["9000:9000", "9001:9001"]
+
+  # 2. Universal Knowledge Discovery Graph (KDG)
+  memgraph_hq:
+    image: memgraph/memgraph:latest
+    ports: ["7688:7687"]
+
+  # 3. Redis Semantic Cache for AI Agents
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  # 4. PMA AI & Strategic Analytics Service
+  artemis_api:
+    image: artemis-platform:latest
+    ports: ["8001:8000"]
+    environment:
+      - GOOGLE_AI_STUDIO_API_KEY=${GOOGLE_AI_STUDIO_API_KEY}
+      - MINIO_ENDPOINT=minio:9000
+      - MEMGRAPH_PORT=7688
+```
+
+---
+
+## 9. Infrastructure Coexistence & Docker Port Mapping
+
+Both systems use Docker Compose for local execution. Running both simultaneously on a single host requires clean network bridging and non-conflicting port allocation.
+
+### 9.1 Port Allocation Matrix
 
 | Service | ISC Standalone Port | PMA Standalone Port | Coexistence Strategy |
 | :--- | :--- | :--- | :--- |
@@ -270,7 +586,7 @@ Both systems use Docker Compose for local execution. Running both simultaneously
 | **ISC Edge Node** | `8090` | None | Dedicated to ISC edge drone server. |
 | **Dashboard UI** | `8080` | None | Host on `8080` or route via Traefik host routing (`c2.artemis.local`). |
 
-### 5.2 Network Bridge Configuration
+### 9.2 Network Bridge Configuration
 
 To allow ISC backend and edge containers to reach PMA services without host networking hacks, create a shared Docker bridge network in `docker-compose.yml`:
 
@@ -296,7 +612,7 @@ services:
 
 ---
 
-## 6. Implementation Roadmap
+## 10. Implementation Roadmap
 
 The integration can be executed incrementally across four modular phases without breaking any existing ISC MVP features:
 
@@ -332,7 +648,7 @@ The integration can be executed incrementally across four modular phases without
 
 ---
 
-## 7. Risk Analysis & Mitigation
+## 11. Risk Analysis & Mitigation
 
 | Identified Risk | Severity | Technical Impact | Mitigation Strategy |
 | :--- | :--- | :--- | :--- |
@@ -343,7 +659,7 @@ The integration can be executed incrementally across four modular phases without
 
 ---
 
-## 8. Conclusion & Recommendation
+## 12. Strategic Recommendation & Decision Summary
 
 The combination of **Intent-Swarm-Commander** and **Poor-Man's Artemis.IA** creates a synergistic military-grade drone C2 and tactical intelligence platform. 
 
