@@ -1,10 +1,10 @@
-# Architectural Integration & Deep Analysis: Intent-Swarm-Commander & Poor-Man's Artemis.IA
+# Architectural Integration & Deep Analysis: Intent-Swarm-Commander & Poor Man's Defense Lakehouse
 
-**Document ID:** `DOC-ANALYSIS-ISC-PMA-001`  
+**Document ID:** `DOC-ANALYSIS-ISC-PMDL-001`  
 **Date:** October 2026  
 **Status:** Approved for Design Integration  
 **Target Repository:** `Intent-Swarm-Commander` (v0.2.0)  
-**Partner Repository:** `Poor-Man-s-Artemis.IA` (v0.2.0)  
+**Partner Repository:** `Poor Man's Defense Lakehouse` (`Poor-Man-s-Artemis.IA`) (v0.2.0)  
 
 ---
 
@@ -12,12 +12,12 @@
 
 **Intent-Swarm-Commander (ISC)** is a tactical multi-drone swarm command-and-control (C2) system designed to decompose high-level military intents (**SMEAC**: Situation, Mission, Execution, Administration/Logistics, Command/Signal) into synchronized drone flight trajectories, automated computer-vision target recognition (YOLO-E), and durable Temporal workflows.
 
-**Poor-Man's Artemis.IA (PMA)** is an ultra-lean, sovereign big data lakehouse and AI infostructure inspired by the French Ministry of Armed Forces' ARTEMIS.IA program. Engineered to run completely on a single commodity Linux VM (16–32 GB RAM, CPU-only) with **zero JVM overhead**, PMA provides high-throughput MQTT telemetry ingestion (Eclipse Mosquitto), columnar Parquet object storage (MinIO), sub-second vectorized SQL analytics (DuckDB), in-memory graph knowledge discovery (Memgraph), and autonomous multi-agent reasoning (Google ADK 2.0 / Gemini).
+**Poor Man's Defense Lakehouse (PMDL)** is an ultra-lean, sovereign big data lakehouse and AI infostructure inspired by the French Ministry of Armed Forces' ARTEMIS.IA program. Engineered to run completely on a single commodity Linux VM (16–32 GB RAM, CPU-only) with **zero JVM overhead**, PMDL provides high-throughput MQTT telemetry ingestion (Eclipse Mosquitto), columnar Parquet object storage (MinIO), sub-second vectorized SQL analytics (DuckDB), in-memory graph knowledge discovery (Memgraph), and autonomous multi-agent reasoning (Google ADK 2.0 / Gemini).
 
 ### The Strategic Value Proposition
 Currently, **Intent-Swarm-Commander** operates with ephemeral in-memory state for drone telemetry, a polling-based HTTP interface for edge drones, static JSON configuration for restricted airspaces, and no capability for long-term telemetry retention or historical fleet analytics.
 
-Integrating **Poor-Man's Artemis.IA** into **Intent-Swarm-Commander** transforms ISC from a local drone flight dispatcher into a full-scale **C4ISR (Command, Control, Communications, Computers, Intelligence, Surveillance, and Reconnaissance)** platform. This integration unlocks:
+Integrating **Poor Man's Defense Lakehouse** into **Intent-Swarm-Commander** transforms ISC from a local drone flight dispatcher into a full-scale **C4ISR (Command, Control, Communications, Computers, Intelligence, Surveillance, and Reconnaissance)** platform. This integration unlocks:
 1. **High-Throughput Swarm Telemetry Ingestion**: Scalable MQTT ingestion bus handling hundreds of simultaneous UAV telemetry streams without HTTP polling bottlenecks.
 2. **Columnar Lakehouse & After-Action Review (AAR)**: Persistent Parquet storage on MinIO with sub-second DuckDB SQL queries over historical flight paths, battery degradation, and mission logs.
 3. **Dynamic Battlefield Knowledge Graph**: Memgraph-powered tactical situational awareness, replacing static geofence files with dynamic threat envelopes (SAMs, radars, jammer ranges, and OSINT targets).
@@ -32,7 +32,7 @@ Both systems were built following identical software engineering principles from
 
 ### 2.1 Component Comparison
 
-| Functional Tier | Intent-Swarm-Commander (Current) | Poor-Man's Artemis.IA (PMA) | Synergy & Target Integrated State |
+| Functional Tier | Intent-Swarm-Commander (Current) | Poor Man's Defense Lakehouse (PMDL) | Synergy & Target Integrated State |
 | :--- | :--- | :--- | :--- |
 | **Telemetry Ingress** | Ephemeral HTTP polling (`GET :8090/telemetry`) | Eclipse Mosquitto MQTT (`:1883`, C-native, 1,000+ evt/s) | **MQTT Telemetry Bus**: Edge drones stream MAVLink telemetry directly to Mosquitto. |
 | **Long-Term Storage** | PostgreSQL 15 (transactional tables only) | MinIO (S3-compatible, partitioned Parquet) | **S3 Lakehouse**: Mission history and high-frequency sensor readings stored in Parquet objects. |
@@ -56,7 +56,7 @@ graph TD
     TraefikGate["Traefik v3 Ingress & Reverse Proxy (Ports 80/443/8080)"]
     WebDashboard["ISC Tactical Web Dashboard (Port 8080)"]
     ISCBackend["ISC Backend API (FastAPI :8000)"]
-    PMAIngestion["PMA Ingestion Facade (FastAPI :8000)"]
+    PMDLIngestion["PMDL Ingestion Facade (FastAPI :8000)"]
     TemporalCore["Temporal Workflow Engine (Port 7233)"]
     MosquittoBus["Mosquitto MQTT Broker (Port 1883)"]
     DiskBuffer["Crash-Resilient Buffer (/tmp/artemis/buffer)"]
@@ -73,7 +73,7 @@ graph TD
     Commander --> TraefikGate
     TraefikGate --> WebDashboard
     TraefikGate --> ISCBackend
-    TraefikGate --> PMAIngestion
+    TraefikGate --> PMDLIngestion
 
     WebDashboard --> ISCBackend
     ISCBackend --> TemporalCore
@@ -92,7 +92,7 @@ graph TD
     DuckDBEngine -->|"Direct S3 Columnar SQL"| MinIOLake
 
     ISCBackend -->|"Dynamic Geofence & Threat Checks"| MemgraphDB
-    PMAIngestion -->|"Target Ingestion & Correlation"| MemgraphDB
+    PMDLIngestion -->|"Target Ingestion & Correlation"| MemgraphDB
     ISCBackend -->|"Dispatch Validated Orders"| DronePi5
 ```
 
@@ -105,8 +105,8 @@ graph TD
 #### Current State in ISC
 In `src/edge/api/server.py`, drone telemetry (latitude, longitude, altitude, battery percentage, heading) is maintained in a local Python dictionary `_telemetry_state` and exposed via `GET /telemetry`. The dashboard or backend must periodically poll each drone over HTTP. In a swarm of 20 to 100 drones operating over lossy tactical radios, polling creates severe latency, bandwidth saturation, and connection dropouts.
 
-#### Integrated Blueprint with PMA
-Replace edge HTTP polling with push-based MQTT streaming over PMA's **Eclipse Mosquitto** broker:
+#### Integrated Blueprint with PMDL
+Replace edge HTTP polling with push-based MQTT streaming over PMDL's **Eclipse Mosquitto** broker:
 1. **Topic Hierarchy**:
    ```
    telemetry/swarms/<swarm_id>/<drone_id>/navigation
@@ -143,7 +143,7 @@ Replace edge HTTP polling with push-based MQTT streaming over PMA's **Eclipse Mo
 #### Current State in ISC
 In `src/edge/vision/inference.py`, the `YoloEInference` engine processes camera frames on the Raspberry Pi 5 to detect target classes (e.g. `vehicle`, `person`, `tank`). Detections are consumed locally by `FlightController` for tracking, but are not persisted or correlated with battlefield command intelligence.
 
-#### Integrated Blueprint with PMA
+#### Integrated Blueprint with PMDL
 1. **Detection Stream to MQTT**:
    When YOLO-E detects an object matching the SMEAC target profile with confidence above threshold:
    ```json
@@ -170,14 +170,14 @@ In `src/edge/vision/inference.py`, the `YoloEInference` engine processes camera 
 2. **Snapshot Storage in MinIO**:
    Low-resolution cropped bounding boxes (target thumbnails) are asynchronously uploaded to MinIO S3 bucket `tactical-snapshots`, providing visual ground-truth evidence for HITL commander validation.
 3. **Memgraph Entity Creation**:
-   PMA's ingestion pipeline extracts the detection event and creates a `:TargetObservation` node in Memgraph linked to `:UAV` and `:SMEAC_Mission`.
+   PMDL's ingestion pipeline extracts the detection event and creates a `:TargetObservation` node in Memgraph linked to `:UAV` and `:SMEAC_Mission`.
 
 ### 4.3 Vectorized After-Action Review (AAR) via DuckDB
 
 #### Capability Overview
 Modern military drone doctrine requires comprehensive After-Action Reviews: analyzing drone performance, tracking detection density, assessing airspace deconfliction, and inspecting battery consumption curves.
 
-PMA's native **DuckDB client** queries MinIO Parquet files directly using vectorized SIMD execution without requiring Spark or Trino clusters:
+PMDL's native **DuckDB client** queries MinIO Parquet files directly using vectorized SIMD execution without requiring Spark or Trino clusters:
 ```sql
 -- Query: Average battery depletion rate and flight time per drone in mission
 SELECT 
@@ -205,7 +205,7 @@ config_path = os.path.join(base_dir, "config", "restricted_zones.json")
 This static approach cannot handle dynamic battlefield conditions: mobile enemy air defense units (SAMs), active radar detection domes, changing friendly artillery corridors, or civilian gathering zones.
 
 #### Integrated Blueprint with Memgraph
-PMA provides **Memgraph** with high-speed Cypher graph queries and geospatial index support.
+PMDL provides **Memgraph** with high-speed Cypher graph queries and geospatial index support.
 1. **Tactical Graph Schema**:
    - Nodes:
      - `(:Swarm {id, callsign, status})`
@@ -220,7 +220,7 @@ PMA provides **Memgraph** with high-speed Cypher graph queries and geospatial in
      - `(:ThreatZone)-[:OVERLAPS]->(:RestrictedAirspace)`
      - `(:Drone)-[:DETECTED {timestamp, confidence}]->(:ObservedEntity)`
 2. **Dynamic Threat Gating in Guardian Critic**:
-   Instead of checking a static file, the Guardian Critic executes an openCypher query via PMA's `GraphFacade`:
+   Instead of checking a static file, the Guardian Critic executes an openCypher query via PMDL's `GraphFacade`:
    ```cypher
    MATCH (t:ThreatZone)
    WHERE t.active = true 
@@ -229,9 +229,9 @@ PMA provides **Memgraph** with high-speed Cypher graph queries and geospatial in
    ```
    If any threat intersects the proposed flight path, the Guardian Critic immediately flags a violation with exact threat intelligence data.
 
-### 4.5 Intelligence-Driven SMEAC Synthesis (PMA DynamicAgentLoop)
+### 4.5 Intelligence-Driven SMEAC Synthesis (PMDL DynamicAgentLoop)
 
-PMA's `DynamicAgentLoop` (`src/domains/ai/operations/dynamic_loop.py`) equips LLM agents with 6 autonomous database tools:
+PMDL's `DynamicAgentLoop` (`src/domains/ai/operations/dynamic_loop.py`) equips LLM agents with 6 autonomous database tools:
 - `execute_project_query`: Runs arbitrary read-only SQL on DuckDB over Parquet telemetry.
 - `query_knowledge_graph`: Runs read-only Cypher on Memgraph.
 - `discover_workspace_schema`: Inspects available datasets and metadata.
@@ -252,20 +252,20 @@ A commander on the ISC Tactical Dashboard can prompt the assistant:
 
 ## 5. Comprehensive Pros & Cons Analysis of Integration
 
-Evaluating the integration of **Poor-Man's Artemis.IA** into **Intent-Swarm-Commander** requires weighing the significant operational and architectural advantages against the added infrastructure and tactical networking complexities.
+Evaluating the integration of **Poor Man's Defense Lakehouse** into **Intent-Swarm-Commander** requires weighing the significant operational and architectural advantages against the added infrastructure and tactical networking complexities.
 
 ### 5.1 The Pros (Strategic & Technical Advantages)
 
 #### 1. Architectural Alignment & Zero Cognitive Friction
 * **Shared `uservice-template` DNA**: Both projects follow identical Domain-Driven Design (DDD) subpackage structures (`api/`, `facade/`, `models/`, `operations/`), clean architecture boundaries, Pydantic type validation, and asynchronous Temporal workflows.
-* **Unified Development Velocity**: Engineers familiar with ISC can inspect, maintain, and extend PMA domains (`ingestion`, `analytics`, `graph`, `discovery`, `ai`) without learning new idioms or conventions.
+* **Unified Development Velocity**: Engineers familiar with ISC can inspect, maintain, and extend PMDL domains (`ingestion`, `analytics`, `graph`, `discovery`, `ai`) without learning new idioms or conventions.
 
 #### 2. Resolving the Swarm Telemetry Scalability Bottleneck
 * **Elimination of HTTP Polling**: Replacing ISC's current `GET :8090/telemetry` polling pattern with **Eclipse Mosquitto MQTT** (`:1883`) allows a single command node to ingest 1,000+ telemetry packets per second with sub-5ms latency and under 20 MB of broker RAM.
 * **Decoupled Crash-Resilient Ingestion**: Edge drones stream events to Mosquitto, which appends to a local POSIX disk buffer before micro-batch compaction into Apache Arrow / Parquet. The central database is protected against write spikes and connection flooding.
 
 #### 3. Sovereign, Low-Footprint Lakehouse (Zero JVM Overhead)
-* **Under 12 GB RAM Footprint**: Unlike traditional big data stacks (Apache Kafka, Hadoop HDFS, Spark, Neo4j, Trino) that require 32–64+ GB of RAM just for JVM runtimes, PMA relies entirely on native C/C++ (Mosquitto, DuckDB, Memgraph, Redis, Postgres) and Go (MinIO, Traefik).
+* **Under 12 GB RAM Footprint**: Unlike traditional big data stacks (Apache Kafka, Hadoop HDFS, Spark, Neo4j, Trino) that require 32–64+ GB of RAM just for JVM runtimes, PMDL relies entirely on native C/C++ (Mosquitto, DuckDB, Memgraph, Redis, Postgres) and Go (MinIO, Traefik).
 * **Forward-Deployable**: The integrated stack can operate on a single ruggedized edge server, tactical vehicle computer, or expeditionary Command Post (FOB) without dedicated cloud infrastructure.
 
 #### 4. Instant Vectorized After-Action Review (AAR) & Fleet Analytics
@@ -281,7 +281,7 @@ Evaluating the integration of **Poor-Man's Artemis.IA** into **Intent-Swarm-Comm
 * **Knowledge Discovery Graph (KDG) Correlation**: Detections are linked to known adversary assets using entity resolution (`Rapidfuzz` + DSU), providing historical tracking of enemy equipment across multiple missions.
 
 #### 7. Intelligence-Driven SMEAC Synthesis
-* **Dynamic Multi-Tool AI Agent**: Leverages PMA's `DynamicAgentLoop` (with 6 read-only database tools) to answer high-level commander tactical queries and autonomously generate drafted SMEAC mission orders grounded in real operational data.
+* **Dynamic Multi-Tool AI Agent**: Leverages PMDL's `DynamicAgentLoop` (with 6 read-only database tools) to answer high-level commander tactical queries and autonomously generate drafted SMEAC mission orders grounded in real operational data.
 
 ---
 
@@ -296,21 +296,21 @@ Evaluating the integration of **Poor-Man's Artemis.IA** into **Intent-Swarm-Comm
 * **Requirement for Edge Buffering**: Edge drones (Raspberry Pi 5) must implement local persistent SQLite or disk-spool buffering to cache telemetry during radio blackouts and replay it upon reconnect.
 
 #### 3. Cloud API Dependency for Complex AI Reasoning
-* **Google AI Studio Reliance**: PMA offloads multi-agent token generation to `gemini-2.5-flash-lite` via Google AI Studio to preserve local CPU/RAM.
+* **Google AI Studio Reliance**: PMDL offloads multi-agent token generation to `gemini-2.5-flash-lite` via Google AI Studio to preserve local CPU/RAM.
 * **Sovereignty & Air-Gap Constraint**: In fully air-gapped or classified operations without internet/satellite backhaul, cloud LLM calls will fail fast (`ServiceUnavailableError`). To operate air-gapped, ISC must either fall back to deterministic planning or host a local quantized model (e.g. Llama-3 / Gemma via Ollama or vLLM), which will increase RAM consumption by 8–16 GB.
 
 #### 4. Cross-Repository Schema Governance
-* **Coupling of Data Contracts**: Changes to ISC edge telemetry formats, YOLO-E classes, or SMEAC command parameters require synchronized updates to PMA's Arrow schemas, DuckDB SQL views, and Memgraph graph models.
-* **Version Drift**: Without unified CI/CD integration, version drift between ISC and PMA could lead to silent ingestion failures or unparsed telemetry attributes.
+* **Coupling of Data Contracts**: Changes to ISC edge telemetry formats, YOLO-E classes, or SMEAC command parameters require synchronized updates to PMDL's Arrow schemas, DuckDB SQL views, and Memgraph graph models.
+* **Version Drift**: Without unified CI/CD integration, version drift between ISC and PMDL could lead to silent ingestion failures or unparsed telemetry attributes.
 
 #### 5. Local Development Resource Competition
-* **Simultaneous Simulation Load**: Running PX4 Autopilot, ROS 2 bridge, Gazebo 3D simulation with GUI rendering alongside the full PMA big data stack on a standard developer laptop will compete heavily for CPU cores, disk I/O, and RAM. Developers must run Gazebo in headless mode or utilize a dedicated workstation/VM.
+* **Simultaneous Simulation Load**: Running PX4 Autopilot, ROS 2 bridge, Gazebo 3D simulation with GUI rendering alongside the full PMDL big data stack on a standard developer laptop will compete heavily for CPU cores, disk I/O, and RAM. Developers must run Gazebo in headless mode or utilize a dedicated workstation/VM.
 
 ---
 
 ### 5.3 Comparative Decision Matrix
 
-| Dimension | Standalone ISC (Current MVP) | Integrated ISC + Poor-Man's Artemis.IA |
+| Dimension | Standalone ISC (Current MVP) | Integrated ISC + Poor Man's Defense Lakehouse |
 | :--- | :--- | :--- |
 | **Telemetry Scalability** | Low (HTTP polling breaks at > 5 drones) | **Very High** (MQTT handles 1,000+ evt/s, 100+ drones) |
 | **Data Retention** | Ephemeral (in-memory state, lost on restart) | **Permanent** (Columnar Parquet Lakehouse in MinIO) |
@@ -387,7 +387,7 @@ Physical placement must align with computational limits, RF constraints, and env
 To achieve the best balance of **sub-millisecond flight control**, **low-latency telemetry**, and **deep strategic analytics**, three deployment topologies are evaluated.
 
 ### 7.1 Option A: Monolithic Tactical Edge ("TOC All-in-One")
-* **Concept**: The entire integrated stack (ISC + all 8 PMA services) is deployed as Docker containers directly onto a single ruggedized server (e.g. 32 GB RAM, 8–16 core CPU) located inside the mobile Command Vehicle or Tactical Operations Center (TOC).
+* **Concept**: The entire integrated stack (ISC + all 8 PMDL services) is deployed as Docker containers directly onto a single ruggedized server (e.g. 32 GB RAM, 8–16 core CPU) located inside the mobile Command Vehicle or Tactical Operations Center (TOC).
 * **Communication Geometry**:
   - Drones stream directly to the TOC server over line-of-sight (LOS) tactical MANET (Silvus / TrellisWare).
   - RTT between Drones and Mosquitto: **5–15 ms**.
@@ -554,7 +554,7 @@ services:
     image: redis:7-alpine
     ports: ["6379:6379"]
 
-  # 4. PMA AI & Strategic Analytics Service
+  # 4. PMDL AI & Strategic Analytics Service
   artemis_api:
     image: artemis-platform:latest
     ports: ["8001:8000"]
@@ -572,23 +572,23 @@ Both systems use Docker Compose for local execution. Running both simultaneously
 
 ### 9.1 Port Allocation Matrix
 
-| Service | ISC Standalone Port | PMA Standalone Port | Coexistence Strategy |
+| Service | ISC Standalone Port | PMDL Standalone Port | Coexistence Strategy |
 | :--- | :--- | :--- | :--- |
-| **PostgreSQL** | `5432` | `5433` (mapped from 5432) | Keep separated: ISC uses `5432`, PMA uses `5433` to prevent database schema contamination. |
-| **Temporal gRPC** | `7233` | `7233` | **Option A (Recommended)**: ISC points to PMA's Temporal service with separate task queues (`ISC_TASK_QUEUE` vs `PMA_TASK_QUEUE`).<br>**Option B**: Map PMA Temporal to `7234`. |
-| **Temporal UI** | None | `8233` (host) | Accessible to monitor both ISC and PMA workflows simultaneously on `http://localhost:8233`. |
-| **MQTT Broker** | None | `1883` | Dedicated to PMA; ISC edge drones publish to `localhost:1883`. |
+| **PostgreSQL** | `5432` | `5433` (mapped from 5432) | Keep separated: ISC uses `5432`, PMDL uses `5433` to prevent database schema contamination. |
+| **Temporal gRPC** | `7233` | `7233` | **Option A (Recommended)**: ISC points to PMDL's Temporal service with separate task queues (`ISC_TASK_QUEUE` vs `PMDL_TASK_QUEUE`).<br>**Option B**: Map PMDL Temporal to `7234`. |
+| **Temporal UI** | None | `8233` (host) | Accessible to monitor both ISC and PMDL workflows simultaneously on `http://localhost:8233`. |
+| **MQTT Broker** | None | `1883` | Dedicated to PMDL; ISC edge drones publish to `localhost:1883`. |
 | **MinIO S3 API** | None | `9000` | S3 API accessible by ISC backend and DuckDB. |
 | **MinIO Web Console**| None | `9001` | S3 lakehouse browser accessible on `http://localhost:9001`. |
 | **Memgraph Bolt** | None | `7687` | Memgraph Bolt port accessible by ISC Guardian Critic via `neo4j` or `gqlalchemy`. |
-| **Redis Cache** | None | `6379` | Dedicated to PMA semantic caching and rate limiting. |
-| **Traefik Gateway** | None | `80`, `443`, `8088` | Traefik proxies ISC dashboard (`:8080`), ISC backend (`:8000`), and PMA APIs. |
+| **Redis Cache** | None | `6379` | Dedicated to PMDL semantic caching and rate limiting. |
+| **Traefik Gateway** | None | `80`, `443`, `8088` | Traefik proxies ISC dashboard (`:8080`), ISC backend (`:8000`), and PMDL APIs. |
 | **ISC Edge Node** | `8090` | None | Dedicated to ISC edge drone server. |
 | **Dashboard UI** | `8080` | None | Host on `8080` or route via Traefik host routing (`c2.artemis.local`). |
 
 ### 9.2 Network Bridge Configuration
 
-To allow ISC backend and edge containers to reach PMA services without host networking hacks, create a shared Docker bridge network in `docker-compose.yml`:
+To allow ISC backend and edge containers to reach PMDL services without host networking hacks, create a shared Docker bridge network in `docker-compose.yml`:
 
 ```yaml
 networks:
@@ -621,7 +621,7 @@ The integration can be executed incrementally across four modular phases without
 * **Tasks**:
   1. Add `paho-mqtt` dependency to `src/edge/` and `src/uservice/`.
   2. Implement an asynchronous MQTT publisher inside `src/edge/api/server.py` in the `telemetry_loop()` function.
-  3. Configure PMA's ingestion pipeline to route `telemetry/swarms/#` topics into partitioned S3 Parquet tables.
+  3. Configure PMDL's ingestion pipeline to route `telemetry/swarms/#` topics into partitioned S3 Parquet tables.
   4. Verify data arrival in MinIO using DuckDB CLI.
 
 ### Phase 2: Dynamic Threat Intelligence & Memgraph Safety Gating
@@ -637,13 +637,13 @@ The integration can be executed incrementally across four modular phases without
 * **Tasks**:
   1. In `src/edge/vision/inference.py`, dispatch detection payloads to `telemetry/swarms/<swarm_id>/<drone_id>/detections`.
   2. Implement image thumbnail upload to MinIO bucket `tactical-snapshots`.
-  3. In PMA, configure entity linking to associate target observations with active SMEAC missions in Memgraph.
+  3. In PMDL, configure entity linking to associate target observations with active SMEAC missions in Memgraph.
 
 ### Phase 4: Tactical AI Copilot & After-Action Analytics
-* **Objective**: Expose DuckDB analytics and PMA's multi-agent dynamic tools to the Tactical Dashboard.
+* **Objective**: Expose DuckDB analytics and PMDL's multi-agent dynamic tools to the Tactical Dashboard.
 * **Tasks**:
-  1. Add an AAR Analytics tab in `src/dashboard/index.html` querying DuckDB via PMA's `/api/v1/analytics/query`.
-  2. Connect the SMEAC order generator to PMA's `DynamicAgentLoop` for automated reconnaissance mission drafting.
+  1. Add an AAR Analytics tab in `src/dashboard/index.html` querying DuckDB via PMDL's `/api/v1/analytics/query`.
+  2. Connect the SMEAC order generator to PMDL's `DynamicAgentLoop` for automated reconnaissance mission drafting.
   3. Integrate Temporal UI (`:8233`) into the Commander dashboard for end-to-end mission workflow tracing.
 
 ---
@@ -653,17 +653,17 @@ The integration can be executed incrementally across four modular phases without
 | Identified Risk | Severity | Technical Impact | Mitigation Strategy |
 | :--- | :--- | :--- | :--- |
 | **Tactical Link Disconnection (DDIL / Jamming)** | High | Edge drones cannot reach central Mosquitto broker during EW interference. | Drones utilize local SQLite/disk buffering (`/tmp/edge_buffer.jsonl`) on the Pi 5; automatically flush queued telemetry via bulk replay once MQTT connection is restored. |
-| **Port Conflicts on Host Machine** | Medium | Docker compose fail on startup if both projects use port 5432 or 7233. | Use non-overlapping port mappings (`5433` for PMA Postgres, `8233` for Temporal UI) and use Docker internal DNS names across a shared bridge network (`c2-shared-net`). |
-| **Resource Contention on Local VM** | Low | Simultaneous Gazebo simulation, ROS 2, and Big Data stack exceeding VM memory. | PMA's Zero-JVM architecture consumes < 12 GB RAM idle. If running Gazebo on the same host, allocate swap or offload Gazebo rendering to headless mode (`PX4_GZ_STANDALONE=1`). |
-| **Data Leaks Across Mission Boundaries** | Medium | Multi-swarm telemetry mixed together in shared storage. | Enforce PMA's Project RBAC and Medallion architecture: each swarm or operational theater is assigned an isolated `project_id` with strict S3 prefix confinement. |
+| **Port Conflicts on Host Machine** | Medium | Docker compose fail on startup if both projects use port 5432 or 7233. | Use non-overlapping port mappings (`5433` for PMDL Postgres, `8233` for Temporal UI) and use Docker internal DNS names across a shared bridge network (`c2-shared-net`). |
+| **Resource Contention on Local VM** | Low | Simultaneous Gazebo simulation, ROS 2, and Big Data stack exceeding VM memory. | PMDL's Zero-JVM architecture consumes < 12 GB RAM idle. If running Gazebo on the same host, allocate swap or offload Gazebo rendering to headless mode (`PX4_GZ_STANDALONE=1`). |
+| **Data Leaks Across Mission Boundaries** | Medium | Multi-swarm telemetry mixed together in shared storage. | Enforce PMDL's Project RBAC and Medallion architecture: each swarm or operational theater is assigned an isolated `project_id` with strict S3 prefix confinement. |
 
 ---
 
 ## 12. Strategic Recommendation & Decision Summary
 
-The combination of **Intent-Swarm-Commander** and **Poor-Man's Artemis.IA** creates a synergistic military-grade drone C2 and tactical intelligence platform. 
+The combination of **Intent-Swarm-Commander** and **Poor Man's Defense Lakehouse** creates a synergistic military-grade drone C2 and tactical intelligence platform. 
 
 - **ISC** provides the physical actuation, ROS 2 / PX4 flight control, SMEAC intent parsing, and edge perception.
-- **PMA** provides the enterprise data backbone: resilient high-throughput telemetry buses, zero-JVM lakehouse storage, sub-second columnar fleet analytics, and dynamic graph-based threat awareness.
+- **PMDL** provides the enterprise data backbone: resilient high-throughput telemetry buses, zero-JVM lakehouse storage, sub-second columnar fleet analytics, and dynamic graph-based threat awareness.
 
 It is recommended to proceed with **Phase 1 (MQTT Telemetry Streaming)** and **Phase 2 (Memgraph Dynamic Geofencing)** as the immediate next steps to replace ISC's mock and polling bottlenecks with production-grade data pipelines.

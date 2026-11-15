@@ -50,9 +50,9 @@ const DOCUMENTS = [
   },
   {
     chapter: 6,
-    title: "Architectural Integration Analysis: Poor-Man's Artemis.IA",
-    file: path.join(DOCS_DIR, 'analysis', 'compatibility_with_pma.md'),
-    id: "chap-pma-analysis"
+    title: "Architectural Integration Analysis: Poor Man's Defense Lakehouse",
+    file: path.join(DOCS_DIR, 'analysis', 'compatibility_with_pmdl.md'),
+    id: "chap-pmdl-analysis"
   }
 ];
 

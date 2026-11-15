@@ -282,5 +282,5 @@ docker logs -f autonomous_drone_env
 | `8090` | TCP / HTTP | `0.0.0.0` | Edge Drone API | Private Mesh / VPN network (WireGuard recommended) |
 | `14540`| UDP | `localhost` | PX4 MAVLink Local SDK | MAVSDK client loopback connection |
 | `14550`| UDP | `0.0.0.0` | PX4 Ground Control Station | QGroundControl / Mission Planner broadcast |
-| `8883` | TCP / TLS | `0.0.0.0` | Mosquitto MQTT *(PMA Integration)* | Mutual TLS (mTLS) for high-rate telemetry bus |
+| `8883` | TCP / TLS | `0.0.0.0` | Mosquitto MQTT *(PMDL Integration)* | Mutual TLS (mTLS) for high-rate telemetry bus |
 

@@ -26,7 +26,7 @@ async def swarm_proxy_middleware(request: Request, call_next: Callable) -> Respo
     """
     path = request.url.path
 
-    # Explicitly pass through PMA C4ISR endpoints handled by central FastAPI routers
+    # Explicitly pass through PMDL C4ISR endpoints handled by central FastAPI routers
     if any(path.startswith(prefix) for prefix in _DIRECT_PREFIXES):
         return await call_next(request)
 

@@ -1,4 +1,4 @@
-"""Standalone PMA C4ISR stack verification & sub-2s AAR benchmark script."""
+"""Standalone PMDL C4ISR stack verification & sub-2s AAR benchmark script."""
 
 from __future__ import annotations
 
@@ -22,9 +22,9 @@ from src.uservice.threat.operations.graph_client import MemgraphClient
 
 
 async def run_benchmark(project_id: str, row_count: int, check_live_infra: bool) -> int:
-    print(f"[PMA Verify] Project={project_id} | BenchmarkRows={row_count} | LiveInfra={check_live_infra}")
+    print(f"[PMDL Verify] Project={project_id} | BenchmarkRows={row_count} | LiveInfra={check_live_infra}")
 
-    with tempfile.TemporaryDirectory(prefix="isc_pma_verify_") as tmpdir:
+    with tempfile.TemporaryDirectory(prefix="isc_pmdl_verify_") as tmpdir:
         tmp_root = Path(tmpdir)
         spool = EdgeSpool(db_path=str(tmp_root / "verify_spool.db"))
         ev = SwarmTelemetryEvent(
@@ -92,7 +92,7 @@ async def run_benchmark(project_id: str, row_count: int, check_live_infra: bool)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Verify PMA C4ISR stack components & AAR latency SLA.")
+    parser = argparse.ArgumentParser(description="Verify PMDL C4ISR stack components & AAR latency SLA.")
     parser.add_argument("--project-id", default="default-theater")
     parser.add_argument("--rows", type=int, default=10000, help="Benchmark telemetry event count")
     parser.add_argument("--live", action="store_true", help="Also verify live MinIO & Memgraph services")

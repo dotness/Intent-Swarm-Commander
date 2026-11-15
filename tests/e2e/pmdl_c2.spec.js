@@ -4,7 +4,7 @@ const { LoginPage } = require('./pages/LoginPage');
 const { DashboardPage } = require('./pages/DashboardPage');
 const { VALID_COMMANDER } = require('./fixtures/credentials');
 
-test.describe('PMA C4ISR Unified C2 Console (US1-US4)', () => {
+test.describe('PMDL C4ISR Unified C2 Console (US1-US4)', () => {
   let loginPage;
   let dashboardPage;
 

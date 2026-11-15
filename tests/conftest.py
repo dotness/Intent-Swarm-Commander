@@ -250,7 +250,7 @@ def local_minio_store(local_s3_client: LocalFilesystemS3Client):
 # ---------------------------------------------------------------------------
 
 class InMemoryMemgraphDriver:
-    """Structured in-memory property-graph driver handling canonical PMA openCypher queries."""
+    """Structured in-memory property-graph driver handling canonical PMDL openCypher queries."""
 
     def __init__(self) -> None:
         self.unavailable: bool = False

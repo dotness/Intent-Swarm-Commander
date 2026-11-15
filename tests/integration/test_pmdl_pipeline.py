@@ -1,4 +1,4 @@
-"""Hermetic end-to-end PMA C4ISR pipeline integration test (MQTT -> DDIL -> Parquet -> AAR -> Targets -> Threat HITL -> Copilot)."""
+"""Hermetic end-to-end PMDL C4ISR pipeline integration test (MQTT -> DDIL -> Parquet -> AAR -> Targets -> Threat HITL -> Copilot)."""
 
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,7 +30,7 @@ from src.uservice.threat.operations.correlator import TargetCorrelator
 
 
 @pytest.mark.asyncio
-async def test_full_pma_c4isr_pipeline_hermetic(
+async def test_full_pmdl_c4isr_pipeline_hermetic(
     tmp_path: Path,
     sqlite_db_session,
     in_memory_mqtt_bus,
@@ -43,7 +43,7 @@ async def test_full_pma_c4isr_pipeline_hermetic(
     signaled_workflows: list[dict] = []
 
     async def _noop_start_workflow(*args, **kwargs):
-        return "wf-pma-ok"
+        return "wf-pmdl-ok"
 
     async def _capture_signal_workflow(workflow_id: str, signal_name: str, arg=None):
         signaled_workflows.append({"workflow_id": workflow_id, "signal_name": signal_name, "arg": arg})
@@ -114,7 +114,7 @@ async def test_full_pma_c4isr_pipeline_hermetic(
             status="active",
             drone_count=2,
             endpoint_url="mqtt://mosquitto:1883",
-            created_by="commander-pma",
+            created_by="commander-pmdl",
         )
     )
     await sqlite_db_session.commit()
@@ -139,7 +139,7 @@ async def test_full_pma_c4isr_pipeline_hermetic(
 
     try:
         tok = await issue_jit_credential(
-            agent_name="commander-pma",
+            agent_name="commander-pmdl",
             scopes=[
                 "swarm:read",
                 "swarm:write",

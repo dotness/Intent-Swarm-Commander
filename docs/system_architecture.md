@@ -153,4 +153,4 @@ For in-depth technical analysis and specialized views of the system, refer to:
 * **[Deployment Architecture](file:///home/remi/Projects/Intent-Swarm-Commander/docs/deployment.md)**: Hardware topology, container configuration, ports, and edge runtime specs.
 * **[Domain-Driven Design (DDD)](file:///home/remi/Projects/Intent-Swarm-Commander/docs/domain_driven_design.md)**: Bounded contexts, context maps, domain models, and aggregates.
 * **[System & Entity Overview](file:///home/remi/Projects/Intent-Swarm-Commander/docs/service_and_entity_overview.md)**: Detailed catalog of services, database schemas, and entity lifecycles.
-* **[PMA Integration Analysis](file:///home/remi/Projects/Intent-Swarm-Commander/docs/analysis/compatibility_with_pma.md)**: Strategic compatibility study with Poor-Man's Artemis.IA data lakehouse.
+* **[PMDL Integration Analysis](file:///home/remi/Projects/Intent-Swarm-Commander/docs/analysis/compatibility_with_pmdl.md)**: Strategic compatibility study with Poor Man's Defense Lakehouse.

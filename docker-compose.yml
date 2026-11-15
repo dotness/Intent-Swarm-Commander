@@ -30,13 +30,13 @@ services:
       - POSTGRES_PWD=${POSTGRES_PASSWORD:-isc_pass}
       - POSTGRES_SEEDS=postgres
       - ISC_TASK_QUEUE=${ISC_TASK_QUEUE:-isc-smeac-queue}
-      - PMA_TASK_QUEUE=${PMA_TASK_QUEUE:-pma-ingestion-queue}
+      - PMDL_TASK_QUEUE=${PMDL_TASK_QUEUE:-pmdl-ingestion-queue}
     depends_on:
       - postgres
 
   mosquitto:
     image: eclipse-mosquitto:2
-    container_name: pma_mosquitto
+    container_name: pmdl_mosquitto
     networks:
       - c2-shared-net
     ports:
@@ -48,7 +48,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: pma_minio
+    container_name: pmdl_minio
     networks:
       - c2-shared-net
     ports:
@@ -64,7 +64,7 @@ services:
 
   memgraph:
     image: memgraph/memgraph-platform:latest
-    container_name: pma_memgraph
+    container_name: pmdl_memgraph
     networks:
       - c2-shared-net
     ports:
@@ -88,7 +88,7 @@ services:
       - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://isc_user:isc_pass@postgres:5432/isc_db}
       - TEMPORAL_URL=${TEMPORAL_URL:-temporal:7233}
       - ISC_TASK_QUEUE=${ISC_TASK_QUEUE:-isc-smeac-queue}
-      - PMA_TASK_QUEUE=${PMA_TASK_QUEUE:-pma-ingestion-queue}
+      - PMDL_TASK_QUEUE=${PMDL_TASK_QUEUE:-pmdl-ingestion-queue}
       - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-mosquitto}
       - MQTT_BROKER_PORT=${MQTT_BROKER_PORT:-1883}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
