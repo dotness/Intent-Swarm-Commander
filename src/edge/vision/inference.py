@@ -5,19 +5,11 @@ and classify target objects in real-time on the Raspberry Pi 5.
 """
 
 import logging
-import os
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# YOLO-E (via ultralytics) imported conditionally
-try:
-    from ultralytics import YOLO
-
-    YOLO_AVAILABLE = True
-except ImportError:
-    YOLO_AVAILABLE = False
-    logger.warning("YOLO/ultralytics not available — running in simulation mode")
+from ultralytics import YOLO
 
 
 @dataclass
@@ -48,9 +40,6 @@ class YoloEInference:
 
     def load(self) -> bool:
         """Load the YOLO-E model into memory."""
-        if not YOLO_AVAILABLE:
-            logger.info("Simulated YOLO-E model loaded (path=%s)", self.model_path)
-            return True
 
         try:
             self._model = YOLO(self.model_path)
@@ -74,11 +63,7 @@ class YoloEInference:
         -------
         List of Detection objects above the confidence threshold.
         """
-        if not YOLO_AVAILABLE or self._model is None:
-            if os.environ.get("SIMULATION_MODE", "false").lower() != "true":
-                raise RuntimeError("YOLO model absent and SIMULATION_MODE is not true.")
-            # Simulation mode: return empty detections
-            logger.debug("Simulated inference — no detections")
+        if self._model is None:
             return []
 
         results = self._model(frame, verbose=False)
@@ -116,3 +101,32 @@ class YoloEInference:
             )
 
         return detections
+
+
+def crop_detection_jpeg(
+    frame,
+    bbox: tuple[int, int, int, int],
+    padding_px: int = 12,
+    quality: int = 85,
+) -> bytes:
+    """Crop the bounded target ROI from a raw camera frame and encode as JPEG bytes."""
+    if isinstance(frame, (bytes, bytearray)) and bytes(frame).startswith(b"\xff\xd8\xff"):
+        return bytes(frame)
+
+    if frame is None or not hasattr(frame, "shape"):
+        raise ValueError("Cannot crop detection JPEG from empty or invalid frame")
+
+    h, w = int(frame.shape[0]), int(frame.shape[1])
+    x1, y1, x2, y2 = bbox
+    cx1 = max(0, min(w - 1, int(x1) - padding_px))
+    cy1 = max(0, min(h - 1, int(y1) - padding_px))
+    cx2 = max(cx1 + 1, min(w, int(x2) + padding_px))
+    cy2 = max(cy1 + 1, min(h, int(y2) + padding_px))
+    crop = frame[cy1:cy2, cx1:cx2]
+
+    import cv2
+
+    ok, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, int(quality)])
+    if not ok:
+        raise RuntimeError("cv2.imencode('.jpg') returned False")
+    return bytes(buf.tobytes())

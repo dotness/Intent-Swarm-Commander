@@ -17,16 +17,30 @@ class LoginResponse(BaseModel):
 
 @router.post("/login", response_model=LoginResponse)
 async def login(req: LoginRequest):
-    expected_passphrase = os.environ.get("COMMANDER_PASSPHRASE")
+    expected_passphrase = os.environ.get("COMMANDER_PASSPHRASE", "").strip()
     if not expected_passphrase:
-        expected_passphrase = "dev_passphrase"  # fallback for development
-        
-    valid_passphrases = {expected_passphrase, "dev_passphrase", "dev-passphrase"}
-    if req.passphrase not in valid_passphrases:
+        raise HTTPException(
+            status_code=500,
+            detail="COMMANDER_PASSPHRASE is not configured",
+        )
+
+    if req.passphrase != expected_passphrase:
         raise HTTPException(status_code=401, detail="Invalid credentials")
         
-    # Grant necessary scopes for the dashboard
-    scopes = ["smeac:create", "smeac:read", "hitl:decide", "hitl:read"]
+    # Grant necessary scopes for the dashboard and C4ISR endpoints
+    scopes = [
+        "smeac:create",
+        "smeac:read",
+        "hitl:decide",
+        "hitl:read",
+        "swarm:read",
+        "swarm:create",
+        "swarm:delete",
+        "threat:read",
+        "threat:write",
+        "analytics:read",
+        "analytics:write",
+    ]
     
     # Issue a token with a 24-hour lifetime for the dashboard
     result = await issue_jit_credential(

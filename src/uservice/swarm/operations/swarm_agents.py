@@ -7,12 +7,16 @@ Implements the initial minimal rule set from spec.md:
 """
 
 import logging
-import json
-import os
 from dataclasses import dataclass
+
 from shapely.geometry import Point, shape
 
 logger = logging.getLogger(__name__)
+
+
+def _polygon_contains(lon: float, lat: float, polygon_geojson: dict) -> bool:
+    """Evaluate point containment in a GeoJSON Polygon/MultiPolygon."""
+    return shape(polygon_geojson).contains(Point(lon, lat))
 
 # ── Safety constraint constants ───────────────────────────────────────────
 
@@ -79,8 +83,11 @@ def check_duration(duration_s: int | None) -> Violation | None:
     return None
 
 
-def check_geofencing(target_area: dict | str) -> Violation | None:
-    """Check target coordinates are not in restricted airspace."""
+def check_geofencing(
+    target_area: dict | str,
+    restricted_zones: list[dict] | None = None,
+) -> Violation | None:
+    """Check target coordinates against caller-supplied active restricted airspace polygons."""
 
     if not isinstance(target_area, dict) or "lat" not in target_area or "lon" not in target_area:
         return None
@@ -88,46 +95,27 @@ def check_geofencing(target_area: dict | str) -> Violation | None:
     try:
         lat = float(target_area["lat"])
         lon = float(target_area["lon"])
-        target_point = Point(lon, lat)
     except (ValueError, TypeError):
         return None
 
-    # Resolve config path relative to this file
-    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
-    config_path = os.path.join(base_dir, "config", "restricted_zones.json")
-    
-    try:
-        with open(config_path, "r") as f:
-            zones_data = json.load(f)
-    except FileNotFoundError:
-        logger.warning("restricted_zones.json not found at %s", config_path)
-        return None
-    except json.JSONDecodeError as e:
-        logger.error("Failed to parse restricted_zones.json: %s", e)
-        return None
-
-    for zone in zones_data.get("zones", []):
+    for zone in restricted_zones or []:
         if not zone.get("active", False):
             continue
-            
-        polygon_geojson = zone.get("polygon")
+
+        polygon_geojson = zone.get("polygon") or zone.get("polygon_geojson")
         if not polygon_geojson:
             continue
-            
-        try:
-            zone_shape = shape(polygon_geojson)
-            if zone_shape.contains(target_point):
-                return Violation(
-                    rule_id="SAFETY-GEO-ZONE",
-                    rule_description=f"Target area intersects restricted zone: {zone.get('name', 'Unknown')}",
-                    severity="critical",
-                    actual_value=f"({lat}, {lon})",
-                    allowed_range="Outside restricted zones",
-                    remediation="Change target coordinates to outside the restricted zone",
-                )
-        except Exception as e:
-            logger.error("Error parsing restricted zone polygon %s: %s", zone.get("id"), e)
-            
+
+        if _polygon_contains(lon, lat, polygon_geojson):
+            return Violation(
+                rule_id="SAFETY-GEO-ZONE",
+                rule_description=f"Target area intersects restricted zone: {zone.get('name', 'Unknown')}",
+                severity="critical",
+                actual_value=f"({lat}, {lon})",
+                allowed_range="Outside restricted zones",
+                remediation="Change target coordinates to outside the restricted zone",
+            )
+
     return None
 
 
@@ -136,6 +124,7 @@ def verify_command(
     duration_s: int | None,
     target_area: dict | str,
     drone_count: int | None = None,
+    restricted_zones: list[dict] | None = None,
 ) -> list[Violation]:
     """Run all safety constraint checks against a proposed command.
 
@@ -152,7 +141,7 @@ def verify_command(
     if v:
         violations.append(v)
 
-    v = check_geofencing(target_area)
+    v = check_geofencing(target_area, restricted_zones=restricted_zones)
     if v:
         violations.append(v)
 

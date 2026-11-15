@@ -2,72 +2,157 @@ services:
   postgres:
     image: postgres:15
     container_name: isc_postgres
-    network_mode: host
+    networks:
+      - c2-shared-net
+    ports:
+      - "5432:5432"
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=isc_user
-      - POSTGRES_PASSWORD=isc_pass
-      - POSTGRES_DB=isc_db
+      - POSTGRES_USER=${POSTGRES_USER:-isc_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-isc_pass}
+      - POSTGRES_DB=${POSTGRES_DB:-isc_db}
     volumes:
       - pgdata:/var/lib/postgresql/data
 
   temporal:
     image: temporalio/auto-setup:1.24
     container_name: isc_temporal
-    network_mode: host
+    networks:
+      - c2-shared-net
+    ports:
+      - "7233:7233"
+      - "8233:8233"
     restart: unless-stopped
     environment:
       - DB=postgres12
       - DB_PORT=5432
-      - POSTGRES_USER=isc_user
-      - POSTGRES_PWD=isc_pass
-      - POSTGRES_SEEDS=localhost
+      - POSTGRES_USER=${POSTGRES_USER:-isc_user}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD:-isc_pass}
+      - POSTGRES_SEEDS=postgres
+      - ISC_TASK_QUEUE=${ISC_TASK_QUEUE:-isc-smeac-queue}
+      - PMA_TASK_QUEUE=${PMA_TASK_QUEUE:-pma-ingestion-queue}
     depends_on:
       - postgres
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: pma_mosquitto
+    networks:
+      - c2-shared-net
+    ports:
+      - "1883:1883"
+    restart: unless-stopped
+    volumes:
+      - ./config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+
+  minio:
+    image: minio/minio:latest
+    container_name: pma_minio
+    networks:
+      - c2-shared-net
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    restart: unless-stopped
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-minioadmin}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
+  memgraph:
+    image: memgraph/memgraph-platform:latest
+    container_name: pma_memgraph
+    networks:
+      - c2-shared-net
+    ports:
+      - "7687:7687"
+      - "3000:3000"
+    restart: unless-stopped
+    volumes:
+      - memgraph_data:/var/lib/memgraph
 
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
     container_name: isc_backend
-    network_mode: host
+    networks:
+      - c2-shared-net
+    ports:
+      - "8000:8000"
     restart: unless-stopped
     environment:
-      - DATABASE_URL=postgresql+asyncpg://isc_user:isc_pass@localhost:5432/isc_db
-      - TEMPORAL_URL=localhost:7233
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://isc_user:isc_pass@postgres:5432/isc_db}
+      - TEMPORAL_URL=${TEMPORAL_URL:-temporal:7233}
+      - ISC_TASK_QUEUE=${ISC_TASK_QUEUE:-isc-smeac-queue}
+      - PMA_TASK_QUEUE=${PMA_TASK_QUEUE:-pma-ingestion-queue}
+      - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-mosquitto}
+      - MQTT_BROKER_PORT=${MQTT_BROKER_PORT:-1883}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-}
+      - MEMGRAPH_BOLT_URI=${MEMGRAPH_BOLT_URI:-bolt://memgraph:7687}
+      - DEFAULT_PROJECT_ID=${DEFAULT_PROJECT_ID:-default-theater}
+      - PARQUET_FLUSH_INTERVAL_S=${PARQUET_FLUSH_INTERVAL_S:-10}
+      - CORRELATION_RADIUS_M=${CORRELATION_RADIUS_M:-150.0}
+      - CORRELATION_WINDOW_S=${CORRELATION_WINDOW_S:-60.0}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - LLM_MODEL=${LLM_MODEL:-gemini-1.5-flash}
     command: uvicorn src.uservice.main:app --host 0.0.0.0 --port 8000
     depends_on:
       - postgres
       - temporal
+      - mosquitto
+      - minio
+      - memgraph
 
   dashboard:
     build:
       context: .
       dockerfile: Dockerfile.backend
     container_name: isc_dashboard
-    network_mode: host
+    networks:
+      - c2-shared-net
+    ports:
+      - "8080:8080"
     restart: unless-stopped
     command: python3 -m http.server 8080 -d src/dashboard
+    depends_on:
+      - backend
 
   edge_drone:
     build:
       context: .
       dockerfile: Dockerfile.backend
     container_name: isc_edge
-    network_mode: host
+    networks:
+      - c2-shared-net
+    ports:
+      - "8090:8090"
     restart: unless-stopped
     environment:
-      - SIMULATION_MODE=true
+      - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-mosquitto}
+      - MQTT_BROKER_PORT=${MQTT_BROKER_PORT:-1883}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-}
+      - DEFAULT_PROJECT_ID=${DEFAULT_PROJECT_ID:-default-theater}
+      - EDGE_SPOOL_DB_PATH=${EDGE_SPOOL_DB_PATH:-/tmp/isc_edge_spool.db}
     command: python3 -c "from src.edge.api.server import run_edge_server; run_edge_server(host='0.0.0.0', port=8090)"
+    depends_on:
+      - mosquitto
+      - minio
 
   drone_sim:
     build:
       context: .
       dockerfile: Dockerfile.drone_sim
     container_name: autonomous_drone_env
-    network_mode: host
+    networks:
+      - c2-shared-net
     restart: unless-stopped
     privileged: true
     stdin_open: true
@@ -92,5 +177,13 @@ services:
               capabilities: [gpu, graphics, compute, utility]
     command: ["/opt/entrypoint_drone.sh"]
 
+networks:
+  c2-shared-net:
+    name: c2-shared-net
+    driver: bridge
+
 volumes:
   pgdata:
+  mosquitto_data:
+  minio_data:
+  memgraph_data:

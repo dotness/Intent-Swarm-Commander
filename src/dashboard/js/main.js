@@ -1,8 +1,10 @@
 /* Main dashboard entry point */
 
 let currentSwarmId = null;
+let lastCopilotDraftRefs = null;
 let telemetryInterval = null;
 let hitlInterval = null;
+let overlayInterval = null;
 
 /**
  * Initialize the application on DOMContentLoaded.
@@ -18,6 +20,26 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Wire up the SMEAC form
     document.getElementById("smeac-form").addEventListener("submit", handleSmeacSubmit);
+
+    const draftBtn = document.getElementById("btn-draft-copilot");
+    if (draftBtn) {
+        draftBtn.addEventListener("click", handleDraftCopilot);
+    }
+    const refreshAarBtn = document.getElementById("btn-refresh-aar");
+    if (refreshAarBtn) {
+        refreshAarBtn.addEventListener("click", refreshAarPanel);
+    }
+    const aarSelect = document.getElementById("aar-query-type");
+    if (aarSelect) {
+        aarSelect.addEventListener("change", refreshAarPanel);
+    }
+    const projectInput = document.getElementById("project-id-input");
+    if (projectInput) {
+        projectInput.addEventListener("change", () => {
+            refreshTacticalOverlays();
+            refreshAarPanel();
+        });
+    }
 
     // Wire up Create Swarm Modal
     const createSwarmBtn = document.getElementById("btn-create-swarm");
@@ -52,11 +74,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Populate swarms
     await loadSwarms();
+    refreshTacticalOverlays();
+    if (overlayInterval) clearInterval(overlayInterval);
+    overlayInterval = setInterval(refreshTacticalOverlays, 5000);
 
     // Reload swarms when authentication status changes
     window.addEventListener('auth-changed', async (e) => {
         if (e.detail && e.detail.authenticated) {
             await loadSwarms();
+            refreshTacticalOverlays();
         }
     });
 });
@@ -177,21 +203,29 @@ async function handleCreateSwarmSubmit(event) {
 async function handleSmeacSubmit(event) {
     event.preventDefault();
     
+    const resultDiv = document.getElementById("smeac-result");
     if (!currentSwarmId) {
-        alert("Please select a swarm first.");
+        if (resultDiv) {
+            resultDiv.hidden = false;
+            const err = document.createElement("div");
+            err.style.color = "var(--color-danger)";
+            err.textContent = "Please select a swarm before submitting an order.";
+            resultDiv.replaceChildren(err);
+        }
         return;
     }
 
     const form = event.target;
     const submitBtn = document.getElementById("smeac-submit");
-    const resultDiv = document.getElementById("smeac-result");
     
     const orderData = {
+        project_id: window.ApiClient.getActiveProjectId ? window.ApiClient.getActiveProjectId() : "default-theater",
         situation: form.situation.value,
         mission: form.mission.value,
         execution: form.execution.value,
         admin_logistics: form.admin_logistics.value || null,
-        command_signal: form.command_signal.value || null
+        command_signal: form.command_signal.value || null,
+        draft_source_refs: lastCopilotDraftRefs
     };
 
     try {
@@ -199,10 +233,11 @@ async function handleSmeacSubmit(event) {
         submitBtn.textContent = "Submitting...";
         if (resultDiv) {
             resultDiv.hidden = true;
-            resultDiv.innerHTML = "";
+            resultDiv.replaceChildren();
         }
         
         const result = await window.ApiClient.submitSmeac(currentSwarmId, orderData);
+        lastCopilotDraftRefs = null;
         
         // Render target area directly from the Gemini LLM parsed command response
         const commands = result.commands || [];
@@ -216,45 +251,8 @@ async function handleSmeacSubmit(event) {
             if (window.MapController && typeof window.MapController.drawTargetArea === 'function') {
                 window.MapController.drawTargetArea(targetArea);
             }
-
-            // If LineString, animate drone flight along vector for real-time visual situational awareness
-            if (targetArea && targetArea.type === 'LineString' && Array.isArray(targetArea.coordinates) && targetArea.coordinates.length >= 2) {
-                const coords = targetArea.coordinates;
-                // GeoJSON format: [longitude, latitude]
-                let lngA = coords[0][0], latA = coords[0][1];
-                let lngB = coords[1][0], latB = coords[1][1];
-                // Swap if coordinates were provided as [lat, lon]
-                if (Math.abs(lngA) <= 90 && Math.abs(latA) > 90) {
-                    [lngA, latA] = [latA, lngA];
-                    [lngB, latB] = [latB, lngB];
-                }
-
-                if (currentSwarmId && window.MapController && typeof window.MapController.updateDronePositions === 'function') {
-                    let progress = 0;
-                    const droneId = `${currentSwarmId}-lead-drone`;
-                    const anim = setInterval(() => {
-                        progress += 0.1;
-                        if (progress >= 1.0) {
-                            progress = 1.0;
-                            clearInterval(anim);
-                        }
-                        const curLat = latA + (latB - latA) * progress;
-                        const curLng = lngA + (lngB - lngA) * progress;
-                        const status = progress >= 1.0 ? 'arrived_at_point_b' : 'in_transit_to_point_b';
-                        const alt = progress >= 1.0 ? (primaryCmd.altitude_m || 80) : Math.round(50 + progress * 30);
-                        window.MapController.updateDronePositions(currentSwarmId, [{
-                            id: droneId,
-                            status: status,
-                            battery_pct: Math.max(70, Math.round(98 - progress * 7)),
-                            position: { lat: curLat, lng: curLng, alt_m: alt },
-                            heading: 45,
-                            speed: progress >= 1.0 ? 0 : (primaryCmd.speed_ms || 15),
-                            current_mission: status
-                        }]);
-                    }, 350);
-                }
-            }
         }
+        await pollTelemetry();
 
         const savedSwarmId = currentSwarmId;
         form.reset();
@@ -265,26 +263,51 @@ async function handleSmeacSubmit(event) {
             currentSwarmId = savedSwarmId;
         }
 
-        resultDiv.hidden = false;
-        resultDiv.innerHTML = `
-            <div style="color: var(--color-success); font-weight: bold; margin-bottom: 0.5rem;">✅ Order Submitted Successfully</div>
-            <div>Order ID: <span id="smeac-submitted-id">${result.order_id}</span></div>
-            <div style="color: var(--color-primary); font-size: 0.85rem; margin-top: 0.25rem;">Status: Executed</div>
-        `;
+        if (resultDiv) {
+            resultDiv.hidden = false;
+            const titleEl = document.createElement("div");
+            titleEl.style.color = result.status === "pending_hitl" ? "var(--color-warning)" : "var(--color-success)";
+            titleEl.style.fontWeight = "bold";
+            titleEl.style.marginBottom = "0.5rem";
+            titleEl.textContent = result.status === "pending_hitl"
+                ? "⚠️ Threat Conflict Detected — HITL Override Required"
+                : "✅ Order Submitted Successfully";
+
+            const idLine = document.createElement("div");
+            const idSpan = document.createElement("span");
+            idSpan.id = "smeac-submitted-id";
+            idSpan.textContent = String(result.order_id || "");
+            idLine.append("Order ID: ", idSpan);
+
+            const statusLine = document.createElement("div");
+            statusLine.style.fontSize = "0.85rem";
+            statusLine.style.marginTop = "0.25rem";
+            statusLine.textContent = `Status: ${result.status || "executed"}`;
+
+            resultDiv.replaceChildren(titleEl, idLine, statusLine);
+        }
+
+        if (result.status === "pending_hitl") {
+            pollHitl();
+        }
         
-        logHistory(`SMEAC Order ${result.order_id} executed`);
+        logHistory(`SMEAC Order ${result.order_id} (${result.status})`);
         
-        // Hide result after 5s
         setTimeout(() => {
-            resultDiv.hidden = true;
+            if (resultDiv) resultDiv.hidden = true;
         }, 5000);
         
     } catch (e) {
-        resultDiv.hidden = false;
-        resultDiv.innerHTML = `
-            <div style="color: var(--color-danger); font-weight: bold; margin-bottom: 0.5rem;">❌ Submission Failed</div>
-            <div>${e.message}</div>
-        `;
+        if (resultDiv) {
+            resultDiv.hidden = false;
+            const errTitle = document.createElement("div");
+            errTitle.style.color = "var(--color-danger)";
+            errTitle.style.fontWeight = "bold";
+            errTitle.textContent = "❌ Submission Failed";
+            const errMsg = document.createElement("div");
+            errMsg.textContent = e.message || "Unknown error";
+            resultDiv.replaceChildren(errTitle, errMsg);
+        }
     } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = "Submit Order";
@@ -306,11 +329,17 @@ async function pollTelemetry() {
     const tbody = document.getElementById("roster-body");
     
     if (data.drones.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="roster-table__empty">No active units</td></tr>';
+        const emptyRow = document.createElement('tr');
+        const emptyCell = document.createElement('td');
+        emptyCell.colSpan = 4;
+        emptyCell.className = 'roster-table__empty';
+        emptyCell.textContent = 'No active units';
+        emptyRow.appendChild(emptyCell);
+        tbody.replaceChildren(emptyRow);
         return;
     }
     
-    tbody.innerHTML = '';
+    const rows = [];
     data.drones.forEach(drone => {
         const tr = document.createElement('tr');
         
@@ -318,21 +347,43 @@ async function pollTelemetry() {
         if (drone.battery_pct < 20) batColor = "var(--color-danger)";
         else if (drone.battery_pct < 40) batColor = "var(--color-warning)";
 
-        tr.innerHTML = `
-            <td style="font-family: monospace;">${drone.id}</td>
-            <td><span style="color: var(--color-primary)">${drone.status || 'active'}</span></td>
-            <td>
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <div style="width: 40px; height: 6px; background: #333; border-radius: 3px; overflow: hidden;">
-                        <div style="width: ${drone.battery_pct}%; height: 100%; background: ${batColor}"></div>
-                    </div>
-                    ${drone.battery_pct}%
-                </div>
-            </td>
-            <td>${drone.current_mission}</td>
-        `;
-        tbody.appendChild(tr);
+        const tdId = document.createElement('td');
+        tdId.style.fontFamily = 'monospace';
+        tdId.textContent = String(drone.id || '');
+
+        const tdStatus = document.createElement('td');
+        const statusSpan = document.createElement('span');
+        statusSpan.style.color = 'var(--color-primary)';
+        statusSpan.textContent = String(drone.status || 'active');
+        tdStatus.appendChild(statusSpan);
+
+        const tdBat = document.createElement('td');
+        const batWrap = document.createElement('div');
+        batWrap.style.display = 'flex';
+        batWrap.style.alignItems = 'center';
+        batWrap.style.gap = '0.5rem';
+        const barBg = document.createElement('div');
+        barBg.style.width = '40px';
+        barBg.style.height = '6px';
+        barBg.style.background = '#333';
+        barBg.style.borderRadius = '3px';
+        barBg.style.overflow = 'hidden';
+        const barFill = document.createElement('div');
+        const pct = Math.max(0, Math.min(100, Number(drone.battery_pct || 0)));
+        barFill.style.width = `${pct}%`;
+        barFill.style.height = '100%';
+        barFill.style.background = batColor;
+        barBg.appendChild(barFill);
+        batWrap.append(barBg, document.createTextNode(`${drone.battery_pct ?? 'n/a'}%`));
+        tdBat.appendChild(batWrap);
+
+        const tdMission = document.createElement('td');
+        tdMission.textContent = String(drone.current_mission || '');
+
+        tr.append(tdId, tdStatus, tdBat, tdMission);
+        rows.push(tr);
     });
+    tbody.replaceChildren(...rows);
 }
 
 /**
@@ -369,12 +420,16 @@ function loadHistory() {
         const entries = JSON.parse(raw);
         if (!Array.isArray(entries) || entries.length === 0) return;
 
-        list.innerHTML = '';
+        const items = [];
         entries.forEach(entry => {
             const li = document.createElement('li');
-            li.innerHTML = `<span style="color: var(--color-text-muted)">[${entry.time}]</span> ${entry.msg}`;
-            list.appendChild(li);
+            const timeSpan = document.createElement('span');
+            timeSpan.style.color = 'var(--color-text-muted)';
+            timeSpan.textContent = `[${entry.time}] `;
+            li.append(timeSpan, document.createTextNode(String(entry.msg || '')));
+            items.push(li);
         });
+        list.replaceChildren(...items);
     } catch (e) {
         console.error("Failed to load activity history from storage", e);
     }
@@ -394,7 +449,10 @@ function logHistory(msg) {
     
     const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
     const li = document.createElement('li');
-    li.innerHTML = `<span style="color: var(--color-text-muted)">[${time}]</span> ${msg}`;
+    const timeSpan = document.createElement('span');
+    timeSpan.style.color = 'var(--color-text-muted)';
+    timeSpan.textContent = `[${time}] `;
+    li.append(timeSpan, document.createTextNode(String(msg || '')));
     
     list.insertBefore(li, list.firstChild);
     
@@ -421,3 +479,143 @@ window.HistoryController = {
     load: loadHistory,
     log: logHistory
 };
+
+/**
+ * Invoke non-executing SMEAC Copilot to populate draft form fields without submitting.
+ */
+async function handleDraftCopilot() {
+    const intentInput = document.getElementById("copilot-intent");
+    const missionInput = document.getElementById("smeac-mission");
+    const citationsBox = document.getElementById("copilot-citations");
+    const draftBtn = document.getElementById("btn-draft-copilot");
+
+    const intent = (intentInput && intentInput.value ? intentInput.value.trim() : "")
+        || (missionInput && missionInput.value ? missionInput.value.trim() : "");
+    if (!intent || intent.length < 5) {
+        if (citationsBox) {
+            citationsBox.hidden = false;
+            citationsBox.textContent = "Enter at least 5 characters of Commander Intent before drafting.";
+        }
+        return;
+    }
+
+    try {
+        if (draftBtn) {
+            draftBtn.disabled = true;
+            draftBtn.textContent = "Drafting...";
+        }
+        const { draft } = await window.ApiClient.draftSmeacWithCopilot(intent);
+        if (!draft) return;
+
+        lastCopilotDraftRefs = Array.isArray(draft.source_citations)
+            ? draft.source_citations.map(c => `${c.source_type}:${c.source_id}`)
+            : null;
+
+        const sitEl = document.getElementById("smeac-situation");
+        const misEl = document.getElementById("smeac-mission");
+        const exeEl = document.getElementById("smeac-execution");
+        const admEl = document.getElementById("smeac-admin");
+        const sigEl = document.getElementById("smeac-signal");
+        if (sitEl) sitEl.value = draft.situation || "";
+        if (misEl) misEl.value = draft.mission || "";
+        if (exeEl) exeEl.value = draft.execution || "";
+        if (admEl) admEl.value = draft.admin_logistics || "";
+        if (sigEl) sigEl.value = draft.command_signal || "";
+
+        if (citationsBox) {
+            citationsBox.hidden = false;
+            const title = document.createElement("strong");
+            title.textContent = "DRAFT ONLY (Not Submitted) — Grounded Citations:";
+            const ul = document.createElement("ul");
+            ul.style.margin = "0.25rem 0 0 1.25rem";
+            for (const cite of draft.source_citations || []) {
+                const li = document.createElement("li");
+                li.textContent = `[${cite.source_type}] ${cite.label}`;
+                ul.appendChild(li);
+            }
+            citationsBox.replaceChildren(title, ul);
+        }
+        logHistory("Copilot generated read-only SMEAC draft for review");
+    } catch (e) {
+        if (citationsBox) {
+            citationsBox.hidden = false;
+            citationsBox.textContent = `Copilot error: ${e.message || "unknown error"}`;
+        }
+    } finally {
+        if (draftBtn) {
+            draftBtn.disabled = false;
+            draftBtn.textContent = "Draft with AI";
+        }
+    }
+}
+
+/**
+ * Refresh Analytical After-Action Review (AAR) panel from MinIO Parquet backend.
+ */
+async function refreshAarPanel() {
+    const typeSelect = document.getElementById("aar-query-type");
+    const container = document.getElementById("aar-results");
+    if (!container) return;
+
+    const queryType = typeSelect ? typeSelect.value : "summary";
+    try {
+        const res = await window.ApiClient.fetchAar(queryType, currentSwarmId);
+        const header = document.createElement("div");
+        header.style.marginBottom = "0.35rem";
+        header.textContent = `Engine: ${res.engine || "olap"} | Latency: ${res.execution_ms}ms | Rows: ${res.row_count}`;
+
+        const list = document.createElement("ul");
+        list.style.margin = "0";
+        list.style.paddingLeft = "1.1rem";
+        const previewRows = (res.rows || []).slice(0, 15);
+        for (const row of previewRows) {
+            const li = document.createElement("li");
+            li.textContent = Object.entries(row)
+                .map(([k, v]) => `${k}=${v}`)
+                .join(" | ");
+            list.appendChild(li);
+        }
+        container.replaceChildren(header, list);
+    } catch (e) {
+        const err = document.createElement("div");
+        err.style.color = "var(--color-danger)";
+        err.textContent = e.message || "AAR unavailable";
+        container.replaceChildren(err);
+    }
+}
+
+/**
+ * Refresh Memgraph ThreatZones and correlated TargetEntities onto tactical map.
+ */
+async function refreshTacticalOverlays() {
+    if (!window.ApiClient || !window.MapController) return;
+    if (window.authManager && window.authManager.isAuthenticated && !window.authManager.isAuthenticated()) {
+        return;
+    }
+
+    try {
+        if (window.ApiClient.fetchThreats && window.MapController.renderThreatZones) {
+            const threatRes = await window.ApiClient.fetchThreats();
+            window.MapController.renderThreatZones(
+                threatRes.threats,
+                async (threatId, reason) => {
+                    try {
+                        await window.ApiClient.deactivateThreat(threatId, reason);
+                        logHistory(`Deactivated threat ${threatId}`);
+                        refreshTacticalOverlays();
+                    } catch (err) {
+                        console.error("Failed to deactivate threat", err);
+                    }
+                }
+            );
+        }
+        if (window.ApiClient.fetchTargets && window.MapController.renderTargets) {
+            const targets = await window.ApiClient.fetchTargets();
+            window.MapController.renderTargets(targets, (targetId) => {
+                window.MapController.openTargetLineageModal(targetId, refreshTacticalOverlays);
+            });
+        }
+    } catch (e) {
+        console.debug("Overlay refresh skipped:", e);
+    }
+}

@@ -3,7 +3,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, String, Text, Integer
+from sqlalchemy import Boolean, String, Text, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.uservice.database.base import Base, UUIDMixin, TimestampMixin, PermissionMixin
@@ -21,6 +21,9 @@ class HitlDecision(UUIDMixin, TimestampMixin, PermissionMixin, Base):
 
     __tablename__ = "hitl_decisions"
 
+    project_id: Mapped[str] = mapped_column(
+        String(128), default="default-theater", nullable=False, index=True,
+    )
     swarm_command_id: Mapped[uuid.UUID] = mapped_column(
         nullable=False,
     )
@@ -32,3 +35,6 @@ class HitlDecision(UUIDMixin, TimestampMixin, PermissionMixin, Base):
     timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=600)
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
     workflow_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_threat_override: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    threat_zone_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
+    override_justification: Mapped[str | None] = mapped_column(Text, nullable=True)

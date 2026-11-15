@@ -1,8 +1,32 @@
 [project]
 name = "intent-swarm-commander"
-version = "0.1.0"
-description = "SMEAC → Swarm Command translation service"
+version = "0.2.0"
+description = "SMEAC → Swarm Command translation service with PMA C4ISR integration"
 requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "sqlalchemy[asyncio]>=2.0,<3",
+    "asyncpg>=0.29,<1",
+    "pydantic>=2.7,<3",
+    "pydantic-ai>=0.1,<1",
+    "google-genai>=1.0.0",
+    "opentelemetry-api>=1.28,<1.34",
+    "temporalio>=1.7,<2",
+    "python-jose[cryptography]>=3.3,<4",
+    "docker>=7.0,<8",
+    "shapely>=2.0,<3",
+    "paho-mqtt>=2.1.0",
+    "aiomqtt>=2.3.0",
+    "pyarrow>=18.0.0",
+    "duckdb>=1.1.0",
+    "boto3>=1.35.0",
+    "neo4j>=5.25.0",
+    "aiosqlite>=0.20.0",
+    "opencv-python-headless>=4.9,<5",
+    "ultralytics>=8.2,<9",
+    "mavsdk>=2.0,<3",
+]
 
 [tool.ruff]
 target-version = "py312"

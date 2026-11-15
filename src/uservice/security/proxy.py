@@ -10,12 +10,25 @@ from fastapi.responses import JSONResponse
 logger = logging.getLogger(__name__)
 
 
+_DIRECT_PREFIXES = (
+    "/api/v1/threats",
+    "/api/v1/analytics",
+    "/api/v1/targets",
+    "/api/v1/smeac/draft",
+)
+
+
 async def swarm_proxy_middleware(request: Request, call_next: Callable) -> Response:
     """FastAPI middleware that routes /api/v1/swarms/{swarm_id} requests to dedicated containers.
 
-    Implements FR-016 dynamic routing.
+    Implements FR-016 dynamic routing while explicitly passing through centralized
+    ISC C4ISR endpoints (threats, analytics, targets, smeac/draft).
     """
     path = request.url.path
+
+    # Explicitly pass through PMA C4ISR endpoints handled by central FastAPI routers
+    if any(path.startswith(prefix) for prefix in _DIRECT_PREFIXES):
+        return await call_next(request)
 
     # Only proxy swarm-specific data endpoints, not the central provisioning API
     if not path.startswith("/api/v1/swarms/") or path == "/api/v1/swarms":

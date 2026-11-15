@@ -1,22 +1,85 @@
 """End-to-End integration tests for SMEAC to Edge pipeline and simulation endpoints."""
 
-import os
+from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from src.edge.api import server as edge_server
+from src.edge.api.server import create_edge_app
+from src.edge.telemetry.spool import EdgeSpool
+from src.uservice.analytics.operations.minio_store import MinioStore
+from tests.conftest import InMemoryMqttBus, LocalFilesystemS3Client
+
+
+class _HermeticCamera:
+    def __init__(self, device_id: int = 0, width: int = 640, height: int = 480):
+        self.device_id = device_id
+        self.width = width
+        self.height = height
+        self._capture = True
+
+    def open(self) -> bool:
+        return True
+
+    def read_frame(self):
+        return None
+
+    def close(self) -> None:
+        self._capture = None
+
+
+class _HermeticYolo:
+    def __init__(self, model_path: str = "yolov8n.pt", confidence_threshold: float = 0.5):
+        self.model_path = model_path
+        self.confidence_threshold = confidence_threshold
+        self._model = object()
+
+    def load(self) -> bool:
+        return True
+
+    def detect(self, frame, target_class: str | None = None):
+        return []
+
+
+class _HermeticTelemetry:
+    async def position(self):
+        if False:
+            yield None
+
+    async def battery(self):
+        if False:
+            yield None
+
+    async def heading(self):
+        if False:
+            yield None
+
+
+class _HermeticMavSystem:
+    def __init__(self):
+        self.telemetry = _HermeticTelemetry()
+
+    async def connect(self, system_address: str = "udp://:14540"):
+        return None
+
+
 @pytest.fixture
-def edge_client():
-    os.environ["SIMULATION_MODE"] = "true"
-    import importlib
-    for mod_name in ("edge.api.server", "src.edge.api.server"):
-        try:
-            mod = importlib.import_module(mod_name)
-            create_edge_app = getattr(mod, "create_edge_app")
-            break
-        except ImportError:
-            continue
-    else:
-        raise ImportError("Could not import create_edge_app")
+def edge_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(edge_server, "CameraStream", _HermeticCamera)
+    monkeypatch.setattr(edge_server, "YoloEInference", _HermeticYolo)
+    monkeypatch.setattr(edge_server, "MavSystem", _HermeticMavSystem)
+    monkeypatch.setattr(edge_server, "EdgeSpool", lambda: EdgeSpool(db_path=str(tmp_path / "edge_spool.db")))
+    monkeypatch.setattr(edge_server, "MinioStore", lambda: MinioStore(s3_client=LocalFilesystemS3Client(tmp_path / "s3")))
+
+    orig_pub = edge_server.EdgeTelemetryPublisher
+    bus = InMemoryMqttBus()
+    monkeypatch.setattr(
+        edge_server,
+        "EdgeTelemetryPublisher",
+        lambda **kwargs: orig_pub(**kwargs, transport=bus),
+    )
+
+    edge_server._current_assignment = None
     app = create_edge_app()
     with TestClient(app) as client:
         yield client

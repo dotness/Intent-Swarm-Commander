@@ -7,7 +7,6 @@ target_object_class assignments from the central Command Post.
 import asyncio
 import logging
 import os
-import math
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 
@@ -16,25 +15,16 @@ logger = logging.getLogger(__name__)
 from src.edge.vision.camera import CameraStream
 from src.edge.vision.inference import YoloEInference
 from src.edge.navigation.flight_controller import FlightController
+from src.edge.telemetry.spool import EdgeSpool
+from src.edge.telemetry.publisher import EdgeTelemetryPublisher
+from src.uservice.analytics.operations.minio_store import MinioStore
+from src.uservice.telemetry.models.contract.events import SwarmTelemetryEvent
 
-try:
-    from mavsdk import System as MavSystem
-    MAVSDK_AVAILABLE = True
-except ImportError:
-    MAVSDK_AVAILABLE = False
-    logger.warning("MAVSDK not available on edge")
+from mavsdk import System as MavSystem
 
-# FastAPI imported conditionally for the edge server
-try:
-    from fastapi import FastAPI
-    from pydantic import BaseModel, Field
-    import uvicorn
-    FASTAPI_AVAILABLE = True
-except ImportError:
-    FASTAPI_AVAILABLE = False
-    if os.environ.get("SIMULATION_MODE", "false").lower() != "true":
-        raise RuntimeError("FastAPI is required for the edge server.")
-    logger.warning("FastAPI not available on edge — using stub")
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
+import uvicorn
 
 @dataclass
 class TargetAssignment:
@@ -50,6 +40,8 @@ _drone = None
 _flight_controller = None
 _flight_task = None
 _telemetry_task = None
+_edge_spool: EdgeSpool | None = None
+_telemetry_publisher: EdgeTelemetryPublisher | None = None
 
 _telemetry_state = {
     "status": "idle",
@@ -59,8 +51,28 @@ _telemetry_state = {
     "speed": 0.0
 }
 
+async def _publish_loop_event(metric_type: str, lat: float, lon: float, alt_m: float) -> None:
+    if _telemetry_publisher is None:
+        return
+    await _telemetry_publisher.publish_event(
+        SwarmTelemetryEvent(
+            project_id=_telemetry_publisher.project_id,
+            swarm_id=_telemetry_publisher.swarm_id,
+            drone_id=_telemetry_publisher.drone_id,
+            metric_type=metric_type,
+            lat=lat,
+            lon=lon,
+            alt_m=alt_m,
+            heading_deg=float(_telemetry_state["heading"]) % 360.0,
+            speed_ms=max(0.0, float(_telemetry_state["speed"])),
+            battery_pct=max(0.0, min(100.0, float(_telemetry_state["battery"]))),
+            flight_status=str(_telemetry_state["status"]),
+        )
+    )
+
+
 async def telemetry_loop():
-    if not MAVSDK_AVAILABLE or not _drone:
+    if not _drone:
         return
     try:
         async def update_pos():
@@ -68,10 +80,23 @@ async def telemetry_loop():
                 _telemetry_state["position"]["lat"] = pos.latitude_deg
                 _telemetry_state["position"]["lon"] = pos.longitude_deg
                 _telemetry_state["position"]["alt"] = pos.absolute_altitude_m
-        
+                await _publish_loop_event(
+                    "navigation",
+                    float(pos.latitude_deg),
+                    float(pos.longitude_deg),
+                    float(pos.absolute_altitude_m),
+                )
+
         async def update_battery():
             async for bat in _drone.telemetry.battery():
                 _telemetry_state["battery"] = int(bat.remaining_percent * 100)
+                cur_pos = _telemetry_state["position"]
+                await _publish_loop_event(
+                    "battery",
+                    float(cur_pos["lat"]) if cur_pos else 0.0,
+                    float(cur_pos["lon"]) if cur_pos else 0.0,
+                    float(cur_pos["alt"]) if cur_pos else 0.0,
+                )
                 
         async def update_heading():
             async for head in _drone.telemetry.heading():
@@ -85,43 +110,53 @@ async def telemetry_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _camera, _inference, _drone, _telemetry_task
-    
+    global _camera, _inference, _drone, _telemetry_task, _edge_spool, _telemetry_publisher
+
     _camera = CameraStream()
     _camera.open()
-    
+
     _inference = YoloEInference()
     _inference.load()
-    
-    if MAVSDK_AVAILABLE:
-        _drone = MavSystem()
-        mav_url = os.environ.get("MAVSDK_URL", "udp://:14540")
-        async def connect_drone():
-            global _telemetry_task
-            try:
-                await _drone.connect(system_address=mav_url)
-                logger.info("Server connected to drone via MAVSDK at %s", mav_url)
-                _telemetry_task = asyncio.create_task(telemetry_loop())
-            except Exception as e:
-                logger.error("Failed to connect to drone: %s", e)
-        asyncio.create_task(connect_drone())
-    
+
+    _edge_spool = EdgeSpool()
+    _telemetry_publisher = EdgeTelemetryPublisher(
+        project_id=os.getenv("DEFAULT_PROJECT_ID", "default-theater"),
+        swarm_id=os.getenv("SWARM_ID", "swarm-edge-1"),
+        drone_id=os.getenv("DRONE_ID", "drone-1"),
+        spool=_edge_spool,
+        minio_store=MinioStore(),
+    )
+    _telemetry_publisher.start()
+
+    _drone = MavSystem()
+    mav_url = os.environ.get("MAVSDK_URL", "udp://:14540")
+    async def connect_drone():
+        global _telemetry_task
+        try:
+            await _drone.connect(system_address=mav_url)
+            logger.info("Server connected to drone via MAVSDK at %s", mav_url)
+            _telemetry_task = asyncio.create_task(telemetry_loop())
+        except Exception as e:
+            logger.error("Failed to connect to drone: %s", e)
+    asyncio.create_task(connect_drone())
+
     yield
-    
+
     if _flight_controller:
         _flight_controller.stop()
     if _flight_task:
         _flight_task.cancel()
     if _telemetry_task:
         _telemetry_task.cancel()
+    if _telemetry_publisher:
+        await _telemetry_publisher.stop()
+    if _edge_spool:
+        _edge_spool.close()
     if _camera:
         _camera.close()
 
 def create_edge_app() -> "FastAPI":
-    if not FASTAPI_AVAILABLE:
-        raise RuntimeError("FastAPI is required for the edge server")
-
-    app = FastAPI(title="ISC Edge Node", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="ISC Edge Node", version="0.2.0", lifespan=lifespan)
 
     class TargetRequest(BaseModel):
         target_object_class: str = Field(description="YOLO-E class to identify")
@@ -146,11 +181,18 @@ def create_edge_app() -> "FastAPI":
             
         # Start new flight controller
         if _camera and _inference:
-            _flight_controller = FlightController(_camera, _inference, body.target_object_class, drone=_drone)
+            _flight_controller = FlightController(
+                _camera,
+                _inference,
+                body.target_object_class,
+                drone=_drone,
+                telemetry_publisher=_telemetry_publisher,
+                mission_id=body.command_id,
+            )
             
             async def run_flight():
                 _flight_controller._running = True
-                if MAVSDK_AVAILABLE and _flight_controller.drone:
+                if _flight_controller.drone:
                     _flight_controller._telemetry_task = asyncio.create_task(_flight_controller._telemetry_loop())
                 try:
                     await _flight_controller._navigation_loop()
@@ -180,6 +222,12 @@ def create_edge_app() -> "FastAPI":
         if _flight_controller and _flight_controller.state.status != "searching":
             _telemetry_state["status"] = _flight_controller.state.status
         return _telemetry_state
+
+    @app.get("/spool/status")
+    async def spool_status():
+        if _edge_spool is None:
+            return {"queued_rows": 0, "priority_queued_rows": 0, "routine_queued_rows": 0}
+        return _edge_spool.get_status(os.getenv("SWARM_ID", "swarm-edge-1")).model_dump()
 
     return app
 

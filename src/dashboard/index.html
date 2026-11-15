@@ -14,7 +14,11 @@
             <h1>Intent Swarm Commander</h1>
             <span class="topbar__version">v0.2.0</span>
         </div>
-        <div id="auth-indicator" class="topbar__auth"></div>
+        <div class="topbar__controls" style="display:flex;align-items:center;gap:0.75rem;">
+            <label for="project-id-input" style="font-size:0.85rem;">Theater:</label>
+            <input id="project-id-input" type="text" value="default-theater" aria-label="Theater Project ID" style="padding:0.25rem 0.5rem;border-radius:4px;border:1px solid #444;background:#1f2937;color:#fff;width:140px;" />
+            <div id="auth-indicator" class="topbar__auth"></div>
+        </div>
     </header>
 
     <main class="dashboard">
@@ -46,7 +50,12 @@
                     </div>
                     <button type="submit" id="smeac-submit" class="btn btn--primary">Submit Order</button>
                 </div>
+                <div class="smeac-copilot" style="margin-top:0.75rem;display:flex;gap:0.5rem;align-items:center;">
+                    <input id="copilot-intent" type="text" placeholder="Commander intent prompt for AI draft (read-only)..." style="flex:1;padding:0.4rem;border-radius:4px;border:1px solid #444;background:#1f2937;color:#fff;" />
+                    <button type="button" id="btn-draft-copilot" class="btn btn--secondary">Draft with AI</button>
+                </div>
             </form>
+            <div id="copilot-citations" class="smeac-result" hidden style="margin-top:0.5rem;font-size:0.85rem;"></div>
             <div id="smeac-result" class="smeac-result" hidden></div>
         </section>
 
@@ -89,6 +98,21 @@
                 <span class="verification-status__badge verification-status__badge--ok">System OK</span>
             </div>
         </section>
+
+        <!-- Analytical After-Action Review (AAR) -->
+        <section id="aar-panel" class="panel panel--aar">
+            <h2 class="panel__title">After-Action Review (AAR)</h2>
+            <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;align-items:center;">
+                <select id="aar-query-type" aria-label="AAR Query Type">
+                    <option value="summary">Summary</option>
+                    <option value="trajectory">Trajectory</option>
+                    <option value="battery_decay">Battery Decay</option>
+                    <option value="detections">Detections</option>
+                </select>
+                <button type="button" id="btn-refresh-aar" class="btn btn--secondary">Query AAR</button>
+            </div>
+            <div id="aar-results" style="font-size:0.85rem;max-height:220px;overflow:auto;"></div>
+        </section>
     </main>
 
     <!-- HITL Approval Modal -->
@@ -96,9 +120,27 @@
         <div class="hitl-modal__content">
             <h2 class="hitl-modal__title">⚠️ High-Impact Action — Approval Required</h2>
             <div id="hitl-modal-body" class="hitl-modal__body"></div>
+            <div id="hitl-rationale-wrap" class="hitl-modal__rationale" style="margin-top:0.75rem;">
+                <label for="hitl-rationale" style="display:block;margin-bottom:0.25rem;font-weight:600;">Override Justification / Rationale</label>
+                <textarea id="hitl-rationale" rows="3" placeholder="Enter operational rationale (mandatory for Threat Zone override approvals)..." style="width:100%;padding:0.5rem;border-radius:4px;border:1px solid #444;background:#1f2937;color:#fff;"></textarea>
+                <div id="hitl-error" hidden style="color: var(--color-danger); font-size: 0.9rem; margin-top: 0.35rem;"></div>
+            </div>
             <div class="hitl-modal__actions">
                 <button id="hitl-reject" class="btn btn--danger">Reject</button>
                 <button id="hitl-approve" class="btn btn--primary">Approve</button>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Target Lineage Evidence Modal -->
+    <dialog id="target-lineage-modal" class="hitl-modal">
+        <div class="hitl-modal__content">
+            <h2 id="lineage-title" class="hitl-modal__title">Target Lineage</h2>
+            <div id="lineage-observations" class="hitl-modal__body" style="max-height:360px;overflow-y:auto;"></div>
+            <div id="lineage-error" hidden style="color: var(--color-danger); font-size: 0.9rem; margin-top: 0.35rem;"></div>
+            <div class="hitl-modal__actions" style="margin-top:0.75rem;">
+                <button type="button" id="lineage-close" class="btn">Close</button>
+                <button type="button" id="lineage-confirm" class="btn btn--primary">Confirm Entity</button>
             </div>
         </div>
     </dialog>

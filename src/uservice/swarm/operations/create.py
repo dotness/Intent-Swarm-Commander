@@ -15,7 +15,13 @@ from src.uservice.swarm.models.storage.instance import SwarmInstance
 
 import os
 
-async def provision_swarm(session: AsyncSession, name: str, drone_count: int, created_by: str) -> dict:
+async def provision_swarm(
+    session: AsyncSession,
+    name: str,
+    drone_count: int,
+    created_by: str,
+    project_id: str = "default-theater",
+) -> dict:
     """Provision a new swarm instance.
 
     In production this would call Docker SDK to spawn a container.
@@ -37,14 +43,15 @@ async def provision_swarm(session: AsyncSession, name: str, drone_count: int, cr
         endpoint_url = f"http://{container_name}:8090"
         status = "ready"
     except Exception as e:
-        logger.warning("Docker provisioning unavailable (%s); provisioning simulated swarm endpoint", e)
-        container_id = f"sim-{swarm_id.hex[:8]}"
-        endpoint_url = os.getenv("SWARM_DEFAULT_ENDPOINT", "http://localhost:8090")
+        logger.warning("Docker provisioning unavailable (%s); registering swarm without Docker container", e)
+        container_id = None
+        endpoint_url = os.getenv("SWARM_DEFAULT_ENDPOINT")
         status = "ready"
 
     record = SwarmInstance(
         id=swarm_id,
         name=name,
+        project_id=project_id,
         container_id=container_id,
         endpoint_url=endpoint_url,
         status=status,
@@ -54,10 +61,11 @@ async def provision_swarm(session: AsyncSession, name: str, drone_count: int, cr
     session.add(record)
     await session.flush()
 
-    logger.info("Swarm '%s' provisioned: id=%s drones=%d", name, swarm_id, drone_count)
+    logger.info("Swarm '%s' provisioned: id=%s project=%s drones=%d", name, swarm_id, project_id, drone_count)
     return {
         "id": str(record.id),
         "name": record.name,
+        "project_id": record.project_id,
         "container_id": record.container_id,
         "endpoint_url": record.endpoint_url,
         "status": record.status,
@@ -75,6 +83,7 @@ async def get_swarm(session: AsyncSession, swarm_id: uuid.UUID) -> dict | None:
     return {
         "id": str(record.id),
         "name": record.name,
+        "project_id": getattr(record, "project_id", "default-theater"),
         "container_id": record.container_id,
         "endpoint_url": record.endpoint_url,
         "status": record.status,
@@ -84,15 +93,18 @@ async def get_swarm(session: AsyncSession, swarm_id: uuid.UUID) -> dict | None:
     }
 
 
-async def list_swarms(session: AsyncSession) -> list[dict]:
-    """Return all swarm instances."""
+async def list_swarms(session: AsyncSession, project_id: str | None = None) -> list[dict]:
+    """Return swarm instances, optionally filtered by tactical project_id."""
     stmt = select(SwarmInstance)
+    if project_id:
+        stmt = stmt.where(SwarmInstance.project_id == project_id)
     result = await session.execute(stmt)
     records = result.scalars().all()
     return [
         {
             "id": str(r.id),
             "name": r.name,
+            "project_id": getattr(r, "project_id", "default-theater"),
             "container_id": r.container_id,
             "endpoint_url": r.endpoint_url,
             "status": r.status,

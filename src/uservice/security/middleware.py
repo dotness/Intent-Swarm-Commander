@@ -1,12 +1,12 @@
 """MCP Auth Gateway middleware — validates agent identity on every request."""
 
 import logging
-from typing import Callable
+from typing import Any, Callable
 
-from fastapi import Request, Response
+from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
-from src.uservice.security.jwt import TokenValidationError, decode_token, extract_scopes
+from src.uservice.security.jwt import TokenValidationError, decode_token, extract_scopes, verify_scope
 
 logger = logging.getLogger(__name__)
 
@@ -56,3 +56,18 @@ async def auth_gateway_middleware(request: Request, call_next: Callable) -> Resp
     request.state.agent_id = payload.get("sub", "unknown")
 
     return await call_next(request)
+
+
+def require_scopes(required: list[str]) -> Callable[[Request], Any]:
+    """FastAPI dependency enforcing required OAuth 2.1 scopes on route handlers."""
+
+    async def _dependency(request: Request) -> dict[str, Any]:
+        claims = getattr(request.state, "auth_claims", None)
+        if not claims:
+            raise HTTPException(status_code=401, detail="Missing authentication claims")
+        for scope in required:
+            if not verify_scope(claims, scope):
+                raise HTTPException(status_code=403, detail=f"Missing required scope: {scope}")
+        return claims
+
+    return _dependency

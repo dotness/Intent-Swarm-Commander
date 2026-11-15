@@ -1,10 +1,15 @@
 /**
  * Test credentials for Intent Swarm Commander authentication
  */
+const commanderPassphrase = process.env.COMMANDER_PASSPHRASE;
+if (!commanderPassphrase) {
+  throw new Error('COMMANDER_PASSPHRASE environment variable is required for E2E tests.');
+}
+
 module.exports = {
   VALID_COMMANDER: {
     commanderId: 'commander-alpha',
-    passphrase: 'dev_passphrase',
+    passphrase: commanderPassphrase,
   },
   INVALID_COMMANDER: {
     commanderId: 'commander-alpha',

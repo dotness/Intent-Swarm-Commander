@@ -6,9 +6,7 @@ Orchestrates the full pipeline:
   3. (Future phases integrate safety verification and HITL gates here)
 """
 
-import json
 import logging
-import uuid
 from dataclasses import dataclass
 
 from temporalio import workflow
@@ -58,8 +56,9 @@ class ProcessSmeacWorkflow:
 
         commands = parse_result.get("commands", [])
 
-        # Step 2: Safety Verification (Guardian Critic)
+        # Step 2: Safety Verification (Guardian Critic + Memgraph Threat Gating)
         all_violations = []
+        threat_overrides = []
         for cmd in commands:
             violations = await workflow.execute_activity(
                 "safety_check_activity",
@@ -67,14 +66,21 @@ class ProcessSmeacWorkflow:
                 start_to_close_timeout=workflow.timedelta(seconds=10),
             )
             if violations:
-                all_violations.extend(violations)
+                for v in violations:
+                    if v.get("severity") == "threat_override_required":
+                        threat_overrides.append(v)
+                    else:
+                        all_violations.append(v)
                 
         if all_violations:
             logger.error("Safety checks failed: %s", all_violations)
             return {"error": "Safety checks failed", "violations": all_violations}
 
-        # Step 3: HITL Verification for High-Impact Actions
-        requires_hitl = any(cmd.get("is_high_impact", False) for cmd in commands)
+        # Step 3: HITL Verification for High-Impact Actions or Dynamic Threat Conflicts
+        requires_hitl = bool(threat_overrides) or any(
+            cmd.get("is_high_impact", False)
+            for cmd in commands
+        )
         
         if requires_hitl:
             self.hitl_decision = None

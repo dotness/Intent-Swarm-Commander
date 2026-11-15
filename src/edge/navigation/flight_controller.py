@@ -11,20 +11,11 @@ import math
 from dataclasses import dataclass
 
 from src.edge.vision.camera import CameraStream
-from src.edge.vision.inference import Detection, YoloEInference
+from src.edge.vision.inference import Detection, YoloEInference, crop_detection_jpeg
 
 logger = logging.getLogger(__name__)
 
-# MAVSDK imported conditionally — only on edge nodes
-try:
-    from mavsdk import System as MavSystem
-
-    MAVSDK_AVAILABLE = True
-except ImportError:
-    MAVSDK_AVAILABLE = False
-    if os.environ.get("SIMULATION_MODE", "false").lower() != "true":
-        raise RuntimeError("MAVSDK is not available, but SIMULATION_MODE is not true.")
-    logger.warning("MAVSDK not available — running in simulation mode")
+from mavsdk import System as MavSystem
 
 
 @dataclass
@@ -56,6 +47,8 @@ class FlightController:
         inference: YoloEInference,
         target_class: str,
         drone=None,
+        telemetry_publisher=None,
+        mission_id: str | None = None,
     ):
         self.camera = camera
         self.inference = inference
@@ -63,8 +56,13 @@ class FlightController:
         self.state = NavigationState(target_class=target_class)
         self._running = False
         self.drone = drone
+        self.telemetry_publisher = telemetry_publisher
+        self.mission_id = mission_id
         self._telemetry_task = None
-        # Mock target coordinate for distance calculation
+        self.last_lat: float = 0.0
+        self.last_lon: float = 0.0
+        self.last_alt_m: float = 0.0
+        # Active target coordinate (set externally from MAVSDK mission telemetry or order)
         self.target_lat = 0.0
         self.target_lon = 0.0
 
@@ -86,7 +84,7 @@ class FlightController:
             logger.error("Navigation aborted: YOLO-E model failed to load")
             return self.state
             
-        if MAVSDK_AVAILABLE and self.drone is None:
+        if self.drone is None:
             try:
                 self.drone = MavSystem()
                 mav_url = os.environ.get("MAVSDK_URL", "udp://:14540")
@@ -95,7 +93,7 @@ class FlightController:
             except Exception as e:
                 logger.error("Failed to connect to drone: %s", e)
                 
-        if MAVSDK_AVAILABLE and self.drone:
+        if self.drone:
             self._telemetry_task = asyncio.create_task(self._telemetry_loop())
 
         try:
@@ -138,10 +136,22 @@ class FlightController:
                 offset_x = best.center[0] - frame_center_x
                 await self._apply_heading_correction(offset_x)
 
-                if not MAVSDK_AVAILABLE:
-                    # Simulate approach (in production: check distance via telemetry)
-                    self.state.approach_distance_m = max(
-                        0, self.state.approach_distance_m - 1.0
+                if self.telemetry_publisher is not None:
+                    snapshot_bytes: bytes | None = None
+                    try:
+                        snapshot_bytes = crop_detection_jpeg(frame, best.bbox)
+                    except (ValueError, RuntimeError):
+                        snapshot_bytes = None
+                    await self.telemetry_publisher.publish_detection(
+                        lat=self.last_lat,
+                        lon=self.last_lon,
+                        alt_m=self.last_alt_m,
+                        target_class=best.class_name,
+                        confidence=best.confidence,
+                        bbox=best.bbox,
+                        snapshot_bytes=snapshot_bytes,
+                        mission_id=self.mission_id,
+                        flight_status=self.state.status,
                     )
 
                 if self.state.approach_distance_m <= 5.0:
@@ -165,7 +175,7 @@ class FlightController:
         direction = "right" if offset_x > 0 else "left"
         logger.debug("Heading correction: %s (offset=%dpx)", direction, offset_x)
 
-        if MAVSDK_AVAILABLE and self.drone:
+        if self.drone:
             # Map offset to degrees (simplified)
             yaw_deg = float(offset_x) * 0.1
             try:
@@ -175,18 +185,35 @@ class FlightController:
                 
     async def _telemetry_loop(self):
         """Background task to update distance from telemetry."""
-        if not MAVSDK_AVAILABLE or not self.drone:
+        if not self.drone:
             return
             
         try:
             async for position in self.drone.telemetry.position():
                 if not self._running:
                     break
-                
-                # If target coordinates aren't set, use first position + offset as mock
+
+                self.last_lat = position.latitude_deg
+                self.last_lon = position.longitude_deg
+                self.last_alt_m = position.absolute_altitude_m
+
+                if self.telemetry_publisher is not None:
+                    from src.uservice.telemetry.models.contract.events import SwarmTelemetryEvent
+
+                    nav_ev = SwarmTelemetryEvent(
+                        project_id=self.telemetry_publisher.project_id,
+                        swarm_id=self.telemetry_publisher.swarm_id,
+                        drone_id=self.telemetry_publisher.drone_id,
+                        metric_type="navigation",
+                        lat=position.latitude_deg,
+                        lon=position.longitude_deg,
+                        alt_m=position.absolute_altitude_m,
+                        flight_status=self.state.status,
+                    )
+                    await self.telemetry_publisher.publish_event(nav_ev)
+
                 if self.target_lat == 0.0 and self.target_lon == 0.0:
-                    self.target_lat = position.latitude_deg + 0.0005
-                    self.target_lon = position.longitude_deg + 0.0005
+                    continue
                 
                 # Approximate distance in meters
                 dx = (position.longitude_deg - self.target_lon) * 111320 * math.cos(math.radians(position.latitude_deg))

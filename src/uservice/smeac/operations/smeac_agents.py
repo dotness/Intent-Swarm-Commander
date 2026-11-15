@@ -71,11 +71,13 @@ Rules:
 - Provide brief reasoning for your decomposition.
 """
 
-smeac_parser_agent = create_agent(
-    name="SmeacParser",
-    system_prompt=SMEAC_SYSTEM_PROMPT,
-    result_type=SmeacParseResult,
-)
+def get_smeac_parser_agent():
+    """Lazily construct the pydantic-ai SmeacParser agent using configured runtime keys."""
+    return create_agent(
+        name="SmeacParser",
+        system_prompt=SMEAC_SYSTEM_PROMPT,
+        result_type=SmeacParseResult,
+    )
 
 
 async def parse_smeac_order(
@@ -116,6 +118,7 @@ async def parse_smeac_order(
         context.correlation_id,
     )
 
-    result = await smeac_parser_agent.run(prompt)
+    agent = get_smeac_parser_agent()
+    result = await agent.run(prompt)
     logger.info("SmeacParser produced %d commands", len(result.data.commands))
     return result.data

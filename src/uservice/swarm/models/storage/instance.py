@@ -24,6 +24,9 @@ class SwarmInstance(UUIDMixin, TimestampMixin, PermissionMixin, Base):
     __tablename__ = "swarm_instances"
 
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    project_id: Mapped[str] = mapped_column(
+        String(128), default="default-theater", nullable=False, index=True,
+    )
     container_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     endpoint_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     status: Mapped[str] = mapped_column(

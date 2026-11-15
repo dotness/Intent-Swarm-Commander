@@ -1,7 +1,7 @@
 """Guardian Critic Temporal Activity."""
 
 from temporalio import activity
-from src.uservice.swarm.operations.swarm_agents import verify_command, Violation
+from src.uservice.swarm.operations.swarm_agents import verify_command
 
 @activity.defn(name="safety_check_activity")
 async def safety_check_activity(command: dict) -> list[dict]:
@@ -24,7 +24,7 @@ async def safety_check_activity(command: dict) -> list[dict]:
     )
     
     # Return violations as dictionaries for Temporal serialization
-    return [
+    results = [
         {
             "rule_id": v.rule_id,
             "rule_description": v.rule_description,
@@ -35,3 +35,29 @@ async def safety_check_activity(command: dict) -> list[dict]:
         }
         for v in violations
     ]
+
+    from src.uservice.threat.facade.threat import ThreatFacade
+
+    threat_facade = ThreatFacade(
+        session=None,
+        user={"sub": "temporal-safety-activity", "scope": "threat:read"},
+    )
+    eval_res = await threat_facade.evaluate_route_threats(
+        project_id=str(command.get("project_id", "default-theater")),
+        target_area=command.get("target_area"),
+        altitude_m=altitude,
+    )
+    for conflict in eval_res.conflicts:
+        results.append(
+            {
+                "rule_id": f"THREAT:{conflict.threat_id}",
+                "rule_description": (
+                    f"Route intersects {conflict.threat_type} zone '{conflict.name}' "
+                    f"(severity={conflict.severity}, source={conflict.source})"
+                ),
+                "severity": "threat_override_required",
+                "threat_id": conflict.threat_id,
+                "remediation": "Submit HITL override with explicit operational justification.",
+            }
+        )
+    return results

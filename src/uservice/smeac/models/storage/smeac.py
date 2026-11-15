@@ -31,6 +31,9 @@ class SmeacOrder(UUIDMixin, TimestampMixin, PermissionMixin, Base):
 
     __tablename__ = "smeac_orders"
 
+    project_id: Mapped[str] = mapped_column(
+        String(128), default="default-theater", nullable=False, index=True,
+    )
     commander_id: Mapped[str] = mapped_column(String(255), nullable=False)
     situation: Mapped[str] = mapped_column(Text, nullable=False)
     mission: Mapped[str] = mapped_column(Text, nullable=False)
@@ -43,3 +46,4 @@ class SmeacOrder(UUIDMixin, TimestampMixin, PermissionMixin, Base):
     status: Mapped[str] = mapped_column(
         String, default=OrderStatus.SUBMITTED.value, nullable=False,
     )
+    draft_source_refs: Mapped[str | None] = mapped_column(Text, nullable=True)
