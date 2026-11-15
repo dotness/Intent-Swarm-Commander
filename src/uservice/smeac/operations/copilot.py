@@ -158,7 +158,7 @@ class SmeacCopilot:
         )
         response = await asyncio.to_thread(
             client.models.generate_content,
-            model=os.getenv("GEMINI_COPILOT_MODEL", "gemini-2.5-flash"),
+            model=os.getenv("GEMINI_COPILOT_MODEL", "gemini-2.5-flash-lite"),
             contents=prompt,
         )
         text = getattr(response, "text", "") or "{}"

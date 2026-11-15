@@ -50,7 +50,7 @@ def create_agent(
         Type of the dependency context object.
     """
     if model is None:
-        model = os.getenv("LLM_MODEL", "gemini-1.5-flash")
+        model = os.getenv("LLM_MODEL", "gemini-2.5-flash-lite")
 
     # Bridge GEMINI_API_KEY internally for pydantic-ai GoogleProvider
     gemini_key = (os.getenv("GEMINI_API_KEY") or "").strip()
