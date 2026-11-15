@@ -6,7 +6,7 @@ Pipeline: SMEAC text → SmeacParserAgent → list[SwarmCommandDTO]
 import logging
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from src.uservice.base.agent import AgentContext, create_agent
 
@@ -15,12 +15,44 @@ logger = logging.getLogger(__name__)
 
 # ── Agent output schemas ──────────────────────────────────────────────────
 
+class GeoJsonTargetArea(BaseModel):
+    """Explicit GeoJSON geometry schema for structured LLM output."""
+
+    type: str = Field(
+        default="LineString",
+        description="GeoJSON geometry type: LineString, Polygon, or Point",
+    )
+    coordinates: list[Any] = Field(
+        default_factory=list,
+        description="GeoJSON coordinates in [longitude, latitude] order",
+    )
+
+    @model_validator(mode="after")
+    def _normalize_geojson_shape(self) -> "GeoJsonTargetArea":
+        coords = self.coordinates
+        if (
+            self.type == "LineString"
+            and len(coords) >= 2
+            and isinstance(coords[0], (int, float))
+        ):
+            self.type = "Point"
+        elif (
+            self.type == "Polygon"
+            and coords
+            and isinstance(coords[0], list)
+            and coords[0]
+            and isinstance(coords[0][0], (int, float))
+        ):
+            self.coordinates = [coords]
+        return self
+
+
 class SwarmCommandDTO(BaseModel):
     """Structured output from the SMEAC parser agent."""
 
     mission_type: str = Field(description="One of: recon, patrol, strike, transport, escort, abort")
     formation_type: str = Field(description="One of: line, wedge, diamond, spread, stack")
-    target_area: dict[str, Any] = Field(description="GeoJSON object for the target area")
+    target_area: GeoJsonTargetArea = Field(description="GeoJSON geometry object for the target area")
     target_object_class: str | None = Field(
         default=None, description="Object class to identify via YOLO-E (e.g. 'vehicle')"
     )
@@ -120,5 +152,6 @@ async def parse_smeac_order(
 
     agent = get_smeac_parser_agent()
     result = await agent.run(prompt)
-    logger.info("SmeacParser produced %d commands", len(result.data.commands))
-    return result.data
+    parsed = result.output if hasattr(result, "output") else result.data
+    logger.info("SmeacParser produced %d commands", len(parsed.commands))
+    return parsed

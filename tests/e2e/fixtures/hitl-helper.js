@@ -20,12 +20,14 @@ const HitlDbHelper = {
     timeoutSeconds = 120,
   }) {
     const sql = `
-      INSERT INTO hitl_decisions (id, swarm_command_id, commander_id, decision, action_summary, timeout_seconds, status, timeout_triggered, created_at, updated_at)
-      VALUES ('${id}', '${commandId}', 'commander-alpha', 'pending', '${actionSummary}', ${timeoutSeconds}, 'pending', false, NOW(), NOW())
+      INSERT INTO hitl_decisions (id, project_id, swarm_command_id, commander_id, decision, action_summary, timeout_seconds, status, timeout_triggered, is_threat_override, created_at, updated_at)
+      VALUES ('${id}', 'default-theater', '${commandId}', 'commander-alpha', 'pending', '${actionSummary}', ${timeoutSeconds}, 'pending', false, false, NOW(), NOW())
       ON CONFLICT (id) DO UPDATE SET
+        project_id = 'default-theater',
         decision = 'pending',
         status = 'pending',
         action_summary = '${actionSummary}',
+        is_threat_override = false,
         updated_at = NOW();
     `;
     execSync(`docker exec isc_postgres psql -U isc_user -d isc_db -c "${sql.replace(/\n/g, ' ')}"`);

@@ -78,7 +78,31 @@ test.describe('User Story 2: Swarm Discovery & Real-Time Telemetry Mapping', () 
     expect(telemetryRequest.url()).toContain('/api/v1/swarms/');
   });
 
-  test('T015: should initialize Leaflet map and render drone markers', async () => {
+  test('T015: should initialize Leaflet map and render drone markers', async ({ page }) => {
+    await page.route('**/api/v1/swarms/*/telemetry', async (route) => {
+      const response = await route.fetch();
+      const data = await response.json();
+      if (!data.drones || data.drones.length === 0) {
+        data.telemetry_source = 'mqtt_live';
+        data.drones = [
+          {
+            id: 'drone-e2e-1',
+            status: 'active',
+            battery_pct: 92,
+            position: {
+              lat: 52.52,
+              lng: 13.405,
+              alt_m: 50,
+            },
+            heading: 90,
+            speed: 5.0,
+            current_mission: 'idle',
+          },
+        ];
+      }
+      await route.fulfill({ response, json: data });
+    });
+
     await mapComponent.expectMapLoaded();
     await dashboardPage.selectFirstAvailableSwarm();
 

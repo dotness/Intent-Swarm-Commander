@@ -160,6 +160,10 @@ function drawTargetArea(geoJson) {
     }
 
     if (geoJson && (geoJson.type === 'Polygon' || geoJson.type === 'Point' || geoJson.type === 'LineString')) {
+        if (geoJson.type === 'LineString' && Array.isArray(geoJson.coordinates) && typeof geoJson.coordinates[0] === 'number') {
+            geoJson = { type: 'Point', coordinates: geoJson.coordinates };
+        }
+        if (!Array.isArray(geoJson.coordinates) || geoJson.coordinates.length === 0) return;
         targetAreaLayer = L.geoJSON(geoJson, {
             style: {
                 color: '#ef4444',

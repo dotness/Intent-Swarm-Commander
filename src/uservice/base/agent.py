@@ -4,6 +4,7 @@ All ISC agents (SMEAC Parser, Guardian Critic, Executor) inherit from
 this base to share common configuration, logging, and audit hooks.
 """
 
+import inspect
 import logging
 import os
 from dataclasses import dataclass
@@ -69,7 +70,11 @@ def create_agent(
         "system_prompt": system_prompt,
     }
     if result_type is not None:
-        kwargs["result_type"] = result_type
+        init_params = inspect.signature(Agent.__init__).parameters
+        if "output_type" in init_params:
+            kwargs["output_type"] = result_type
+        else:
+            kwargs["result_type"] = result_type
     if deps_type is not None:
         kwargs["deps_type"] = deps_type
 

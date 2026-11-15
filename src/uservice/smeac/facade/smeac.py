@@ -131,7 +131,15 @@ class SmeacFacade(DomainFacade):
             f_type = FormationType(f_str) if f_str in [f.value for f in FormationType] else FormationType.LINE
             prio = CommandPriority(p_str) if p_str in [p.value for p in CommandPriority] else CommandPriority.NORMAL
 
-            target_geo = cmd_dto.target_area if isinstance(cmd_dto.target_area, dict) else {"raw": cmd_dto.target_area}
+            target_geo = (
+                cmd_dto.target_area.model_dump()
+                if hasattr(cmd_dto.target_area, "model_dump")
+                else (
+                    cmd_dto.target_area
+                    if isinstance(cmd_dto.target_area, dict)
+                    else {"raw": cmd_dto.target_area}
+                )
+            )
 
             cmd_record = SwarmCommand(
                 smeac_order_id=order_id,

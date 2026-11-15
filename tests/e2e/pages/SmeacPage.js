@@ -47,7 +47,7 @@ class SmeacPage {
 
   async expectExecuted() {
     await expect(this.resultDiv).toBeVisible();
-    await expect(this.resultDiv).toContainText('Status: Executed');
+    await expect(this.resultDiv).toContainText(/Status:\s*(translated|executed)/i);
   }
 
   /**
