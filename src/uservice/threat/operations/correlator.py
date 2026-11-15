@@ -48,7 +48,9 @@ class TargetCorrelator:
             radius_m if radius_m is not None else os.getenv("CORRELATION_RADIUS_M", "50")
         )
         self.window_s = int(
-            window_s if window_s is not None else os.getenv("CORRELATION_WINDOW_S", "300")
+            float(
+                window_s if window_s is not None else os.getenv("CORRELATION_WINDOW_S", "300")
+            )
         )
 
     async def ingest_detection(self, event: SwarmTelemetryEvent) -> dict[str, Any]:

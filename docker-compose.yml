@@ -101,6 +101,7 @@ services:
       - CORRELATION_WINDOW_S=${CORRELATION_WINDOW_S:-60.0}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - LLM_MODEL=${LLM_MODEL:-gemini-1.5-flash}
+      - COMMANDER_PASSPHRASE=${COMMANDER_PASSPHRASE:-}
     command: uvicorn src.uservice.main:app --host 0.0.0.0 --port 8000
     depends_on:
       - postgres
