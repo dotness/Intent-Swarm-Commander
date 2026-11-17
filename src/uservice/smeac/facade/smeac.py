@@ -218,6 +218,23 @@ class SmeacFacade(DomainFacade):
             )
             pending_hitl_id = uuid.UUID(str(hitl_res["decision_id"]))
             order_record.status = "pending_hitl"
+        elif any(c.get("is_high_impact") for c in formatted_cmds):
+            mission_name = str(formatted_cmds[0].get("mission_type", "high_impact")).upper()
+            hitl_facade = HitlFacade(
+                session=self.session,
+                user=self.user,
+                graph_client=self.graph_client,
+            )
+            hitl_res = await hitl_facade.create_hitl_request(
+                command_id=formatted_cmds[0]["id"],
+                action_summary=f"High-impact {mission_name} mission requires commander approval",
+                timeout_seconds=600,
+                project_id=project_id,
+                workflow_id=f"smeac-{order_id}",
+                is_threat_override=False,
+            )
+            pending_hitl_id = uuid.UUID(str(hitl_res["decision_id"]))
+            order_record.status = "pending_hitl"
 
         await self.session.flush()
 
@@ -231,6 +248,8 @@ class SmeacFacade(DomainFacade):
             execution=body.execution,
             admin_logistics=body.admin_logistics,
             command_signal=body.command_signal,
+            project_id=project_id,
+            commands=[{**c, "id": str(c["id"])} for c in formatted_cmds],
         )
         await asyncio.wait_for(
             operation_facade.start_workflow(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 import logging
 from pathlib import Path
@@ -80,10 +81,15 @@ class DuckdbAarRunner:
                 "engine": "duckdb",
             }
 
-        raw_blobs: list[bytes] = [
-            await self.minio_store.get_object(MinioStore.PARQUET_BUCKET, key)
-            for key in parquet_keys
-        ]
+        sem = asyncio.Semaphore(16)
+
+        async def _fetch_blob(key: str) -> bytes:
+            async with sem:
+                return await self.minio_store.get_object(MinioStore.PARQUET_BUCKET, key)
+
+        raw_blobs: list[bytes] = list(
+            await asyncio.gather(*(_fetch_blob(key) for key in parquet_keys))
+        )
         rows, engine = self._query_native_duckdb(
             raw_blobs=raw_blobs,
             project_id=project_id,

@@ -113,6 +113,27 @@
             </div>
             <div id="aar-results" style="font-size:0.85rem;max-height:220px;overflow:auto;"></div>
         </section>
+
+        <!-- Per-Drone Vision Stream & Detection Snapshots -->
+        <section id="vision-panel" class="panel panel--vision">
+            <h2 class="panel__title">Drone Vision &amp; Snapshots</h2>
+            <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;align-items:center;">
+                <select id="vision-drone-select" aria-label="Drone Vision Channel">
+                    <option value="drone-1">drone-1</option>
+                    <option value="drone-2">drone-2</option>
+                    <option value="drone-3">drone-3</option>
+                    <option value="drone-4">drone-4</option>
+                    <option value="drone-5">drone-5</option>
+                </select>
+                <button type="button" id="btn-refresh-vision-snapshots" class="btn btn--secondary">Refresh Snapshots</button>
+            </div>
+            <div style="margin-bottom:0.5rem;">
+                <img id="vision-stream-img" alt="Live drone video stream" style="width:100%;max-height:220px;object-fit:contain;border-radius:6px;background:#0b1220;border:1px solid #1f2937;" />
+            </div>
+            <div id="vision-snapshot-gallery" style="display:flex;flex-wrap:wrap;gap:0.5rem;font-size:0.85rem;max-height:180px;overflow:auto;">
+                <span class="roster-table__empty">No detection snapshots for this drone yet</span>
+            </div>
+        </section>
     </main>
 
     <!-- HITL Approval Modal -->

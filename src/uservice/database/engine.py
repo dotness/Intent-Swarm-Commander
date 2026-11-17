@@ -25,8 +25,19 @@ async def init_db() -> None:
     import src.uservice.swarm.models.storage.instance  # noqa: F401
     import src.uservice.telemetry.models.storage.live_state  # noqa: F401
 
+    from sqlalchemy import text
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if conn.dialect.name == "postgresql":
+            for stmt in (
+                "ALTER TABLE hitl_decisions ADD COLUMN IF NOT EXISTS drone_id VARCHAR(64)",
+                "ALTER TABLE hitl_decisions ADD COLUMN IF NOT EXISTS detection_event_id VARCHAR(64)",
+                "ALTER TABLE hitl_decisions ADD COLUMN IF NOT EXISTS snapshot_url TEXT",
+                "ALTER TABLE hitl_decisions ADD COLUMN IF NOT EXISTS target_class VARCHAR(128)",
+                "ALTER TABLE hitl_decisions ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION",
+            ):
+                await conn.execute(text(stmt))
 
 
 async def get_session() -> AsyncSession:  # type: ignore[misc]

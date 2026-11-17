@@ -26,7 +26,8 @@ RUN git clone https://github.com/PX4/PX4-Autopilot.git --recursive -b release/1.
 
 # Install PX4 dependencies via their setup script
 WORKDIR /opt/PX4-Autopilot
-RUN bash ./Tools/setup/ubuntu.sh --no-nuttx --no-sim-tools
+RUN bash ./Tools/setup/ubuntu.sh --no-nuttx --no-sim-tools \
+    && make px4_sitl_default
 
 # Build Micro XRCE-DDS Agent (Bridge between ROS 2 and PX4)
 WORKDIR /opt

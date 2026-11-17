@@ -147,8 +147,10 @@ class EdgeTelemetryPublisher:
         battery_pct: float = 100.0,
         flight_status: str = "active",
         frame: Any = None,
+        drone_id: str | None = None,
     ) -> SwarmTelemetryEvent:
         """Upload or spool target JPEG snapshot and emit a QoS 1 detection event."""
+        effective_drone_id = drone_id or self.drone_id
         if snapshot_bytes is None and frame is not None:
             if bbox is not None and len(bbox) == 4:
                 crop_bbox = (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]))
@@ -161,7 +163,7 @@ class EdgeTelemetryPublisher:
         event = SwarmTelemetryEvent(
             project_id=self.project_id,
             swarm_id=self.swarm_id,
-            drone_id=self.drone_id,
+            drone_id=effective_drone_id,
             metric_type="detection",
             lat=lat,
             lon=lon,
@@ -180,7 +182,7 @@ class EdgeTelemetryPublisher:
         if snapshot_bytes:
             s3_key = (
                 f"projects/{self.project_id}/swarms/{self.swarm_id}/"
-                f"drones/{self.drone_id}/{event.event_id}.jpg"
+                f"drones/{effective_drone_id}/{event.event_id}.jpg"
             )
             uploaded = False
             if self.minio_store is not None:

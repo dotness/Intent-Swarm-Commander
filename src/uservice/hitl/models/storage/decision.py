@@ -3,7 +3,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Boolean, String, Text, Integer
+from sqlalchemy import Boolean, Float, String, Text, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.uservice.database.base import Base, UUIDMixin, TimestampMixin, PermissionMixin
@@ -38,3 +38,8 @@ class HitlDecision(UUIDMixin, TimestampMixin, PermissionMixin, Base):
     is_threat_override: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     threat_zone_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
     override_justification: Mapped[str | None] = mapped_column(Text, nullable=True)
+    drone_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    detection_event_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    snapshot_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_class: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)

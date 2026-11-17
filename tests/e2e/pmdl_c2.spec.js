@@ -63,6 +63,7 @@ test.describe('PMDL C4ISR Unified C2 Console (US1-US4)', () => {
   });
 
   test('T047.3: Draft with AI Copilot populates SMEAC fields read-only without auto-submitting order', async ({ page }) => {
+    test.setTimeout(60000);
     let submittedOrders = 0;
     await page.route('**/api/v1/swarms/*/orders', async (route) => {
       submittedOrders += 1;

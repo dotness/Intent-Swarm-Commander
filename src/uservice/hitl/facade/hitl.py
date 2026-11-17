@@ -49,6 +49,11 @@ class HitlFacade(DomainFacade):
         workflow_id: str | None = None,
         is_threat_override: bool = False,
         threat_zone_ids: list[str] | None = None,
+        drone_id: str | None = None,
+        detection_event_id: str | None = None,
+        snapshot_url: str | None = None,
+        target_class: str | None = None,
+        confidence: float | None = None,
     ) -> dict[str, Any]:
         """Create a new HITL approval request for a high-impact or threat-conflicting action."""
         decision_id = uuid.uuid4()
@@ -66,6 +71,11 @@ class HitlFacade(DomainFacade):
             workflow_id=workflow_id,
             is_threat_override=is_threat_override,
             threat_zone_ids=json.dumps(threat_zone_ids) if threat_zone_ids else None,
+            drone_id=drone_id,
+            detection_event_id=detection_event_id,
+            snapshot_url=snapshot_url,
+            target_class=target_class,
+            confidence=confidence,
         )
         self.session.add(record)
         await self.session.flush()
@@ -188,6 +198,11 @@ class HitlFacade(DomainFacade):
                     "is_threat_override": bool(d.is_threat_override),
                     "requires_override_justification": bool(d.is_threat_override),
                     "threat_conflicts": conflicts,
+                    "drone_id": d.drone_id,
+                    "detection_event_id": d.detection_event_id,
+                    "snapshot_url": d.snapshot_url,
+                    "target_class": d.target_class,
+                    "confidence": d.confidence,
                 }
             )
         return items

@@ -70,6 +70,43 @@ function showHitlModal(swarmId, decision, callback) {
     pCmd.append(strongCmd, spanCmd);
     nodes.push(pCmd);
 
+    if (decision.drone_id) {
+        const pDrone = document.createElement('p');
+        const strongDrone = document.createElement('strong');
+        strongDrone.textContent = 'Drone ID: ';
+        pDrone.append(strongDrone, document.createTextNode(String(decision.drone_id)));
+        nodes.push(pDrone);
+    }
+
+    if (decision.target_class) {
+        const pTarget = document.createElement('p');
+        const strongTarget = document.createElement('strong');
+        strongTarget.textContent = 'Detected Target: ';
+        const confTxt = decision.confidence != null ? ` (${Math.round(Number(decision.confidence) * 100)}%)` : '';
+        pTarget.append(strongTarget, document.createTextNode(`${decision.target_class}${confTxt}`));
+        nodes.push(pTarget);
+    }
+
+    if (decision.snapshot_url && window.ApiClient && typeof window.ApiClient.fetchSnapshotBlobUrl === 'function') {
+        const snapWrap = document.createElement('div');
+        snapWrap.id = 'hitl-snapshot-wrap';
+        snapWrap.style.marginTop = '0.5rem';
+        const img = document.createElement('img');
+        img.id = 'hitl-detection-snapshot';
+        img.alt = 'Detection snapshot';
+        img.style.maxWidth = '100%';
+        img.style.maxHeight = '220px';
+        img.style.borderRadius = '6px';
+        img.style.border = '1px solid #374151';
+        snapWrap.appendChild(img);
+        nodes.push(snapWrap);
+        window.ApiClient.fetchSnapshotBlobUrl(decision.snapshot_url)
+            .then((blobUrl) => {
+                if (blobUrl) img.src = blobUrl;
+            })
+            .catch(() => {});
+    }
+
     const pTimeout = document.createElement('p');
     const strongTime = document.createElement('strong');
     strongTime.textContent = 'Time Remaining: ';

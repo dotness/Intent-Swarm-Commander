@@ -61,6 +61,18 @@ async def provision_swarm(
     session.add(record)
     await session.flush()
 
+    if endpoint_url:
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                await client.post(
+                    f"{endpoint_url.rstrip('/')}/context",
+                    json={"swarm_id": str(swarm_id), "project_id": project_id},
+                )
+        except Exception as exc:
+            logger.warning("Failed to bind edge telemetry context at %s: %s", endpoint_url, exc)
+
     logger.info("Swarm '%s' provisioned: id=%s project=%s drones=%d", name, swarm_id, project_id, drone_count)
     return {
         "id": str(record.id),

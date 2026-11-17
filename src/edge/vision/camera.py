@@ -5,6 +5,7 @@ and provides them to the YOLO-E inference pipeline.
 """
 
 import logging
+import os
 from typing import Generator
 
 logger = logging.getLogger(__name__)
@@ -12,26 +13,39 @@ logger = logging.getLogger(__name__)
 import cv2
 
 
+def _resolve_camera_source(device_id: int | str | None) -> int | str:
+    raw = os.getenv("CAMERA_SOURCE", "0") if device_id is None else device_id
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if stripped.isdigit():
+            return int(stripped)
+        return stripped
+    return raw
+
+
 class CameraStream:
     """Manages the camera capture lifecycle on the Raspberry Pi 5."""
 
-    def __init__(self, device_id: int = 0, width: int = 640, height: int = 480):
-        self.device_id = device_id
+    def __init__(self, device_id: int | str | None = None, width: int = 640, height: int = 480):
+        self.device_id: int | str = _resolve_camera_source(device_id)
         self.width = width
         self.height = height
         self._capture = None
 
     def open(self) -> bool:
-        """Open the camera device for capture."""
+        """Open the camera device or virtual video stream for capture."""
+        if self._capture is not None and self._capture.isOpened():
+            return True
 
         self._capture = cv2.VideoCapture(self.device_id)
         if not self._capture.isOpened():
-            logger.error("Failed to open camera device %d", self.device_id)
+            logger.error("Failed to open camera source %s", self.device_id)
             return False
 
-        self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        logger.info("Camera opened: device=%d resolution=%dx%d", self.device_id, self.width, self.height)
+        if isinstance(self.device_id, int):
+            self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+            self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        logger.info("Camera opened: source=%s resolution=%dx%d", self.device_id, self.width, self.height)
         return True
 
     def read_frame(self):
@@ -61,4 +75,5 @@ class CameraStream:
         """Release the camera device."""
         if self._capture is not None:
             self._capture.release()
-            logger.info("Camera device %d released", self.device_id)
+            self._capture = None
+            logger.info("Camera source %s released", self.device_id)

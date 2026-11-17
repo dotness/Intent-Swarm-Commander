@@ -103,6 +103,7 @@ services:
       - LLM_MODEL=${LLM_MODEL:-gemini-2.5-flash-lite}
       - GEMINI_COPILOT_MODEL=${GEMINI_COPILOT_MODEL:-gemini-2.5-flash-lite}
       - COMMANDER_PASSPHRASE=${COMMANDER_PASSPHRASE:-}
+      - SWARM_DEFAULT_ENDPOINT=${SWARM_DEFAULT_ENDPOINT:-http://edge_drone:8090}
     command: uvicorn src.uservice.main:app --host 0.0.0.0 --port 8000
     depends_on:
       - postgres
@@ -125,6 +126,28 @@ services:
     depends_on:
       - backend
 
+  virtual_cam:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: isc_virtual_cam
+    networks:
+      - c2-shared-net
+    ports:
+      - "8091:8091"
+    restart: unless-stopped
+    environment:
+      - VIRTUAL_VIDEO_PATH=${VIRTUAL_VIDEO_PATH:-}
+      - VIRTUAL_CAM_FPS=${VIRTUAL_CAM_FPS:-5}
+    volumes:
+      - ./scripts:/app/scripts:ro
+    command: python3 /app/scripts/virtual_cam_server.py
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   edge_drone:
     build:
       context: .
@@ -143,40 +166,37 @@ services:
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-}
       - DEFAULT_PROJECT_ID=${DEFAULT_PROJECT_ID:-default-theater}
       - EDGE_SPOOL_DB_PATH=${EDGE_SPOOL_DB_PATH:-/tmp/isc_edge_spool.db}
+      - MAVSDK_URL=${MAVSDK_URL:-udp://:14540}
+      - CAMERA_SOURCE=${CAMERA_SOURCE:-http://virtual_cam:8091/stream}
+      - VIRTUAL_CAM_BASE_URL=${VIRTUAL_CAM_BASE_URL:-http://virtual_cam:8091}
     command: python3 -c "from src.edge.api.server import run_edge_server; run_edge_server(host='0.0.0.0', port=8090)"
     depends_on:
-      - mosquitto
-      - minio
+      mosquitto:
+        condition: service_started
+      minio:
+        condition: service_started
+      virtual_cam:
+        condition: service_healthy
 
   drone_sim:
     build:
       context: .
       dockerfile: Dockerfile.drone_sim
     container_name: autonomous_drone_env
-    networks:
-      - c2-shared-net
+    network_mode: "service:edge_drone"
     restart: unless-stopped
     privileged: true
     stdin_open: true
     tty: true
     environment:
-      - DISPLAY=${DISPLAY}
-      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY}
-      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
-      - PULSE_SERVER=${PULSE_SERVER}
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all,graphics,display,compute,utility
+      - HEADLESS=1
+      - DISPLAY=${DISPLAY:-}
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-}
+      - PULSE_SERVER=${PULSE_SERVER:-}
       - QT_X11_NO_MITSHM=1
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      - /mnt/wslg:/mnt/wslg:rw
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu, graphics, compute, utility]
+    depends_on:
+      - edge_drone
     command: ["/opt/entrypoint_drone.sh"]
 
 networks:

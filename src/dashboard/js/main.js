@@ -38,8 +38,18 @@ document.addEventListener("DOMContentLoaded", async () => {
         projectInput.addEventListener("change", () => {
             refreshTacticalOverlays();
             refreshAarPanel();
+            refreshDroneVisionPanel();
         });
     }
+    const visionSelect = document.getElementById("vision-drone-select");
+    if (visionSelect) {
+        visionSelect.addEventListener("change", refreshDroneVisionPanel);
+    }
+    const refreshVisionBtn = document.getElementById("btn-refresh-vision-snapshots");
+    if (refreshVisionBtn) {
+        refreshVisionBtn.addEventListener("click", refreshDroneVisionPanel);
+    }
+    refreshDroneVisionPanel();
 
     // Wire up Create Swarm Modal
     const createSwarmBtn = document.getElementById("btn-create-swarm");
@@ -617,5 +627,84 @@ async function refreshTacticalOverlays() {
         }
     } catch (e) {
         console.debug("Overlay refresh skipped:", e);
+    }
+}
+
+let _visionSnapshotBlobUrls = [];
+
+/**
+ * Update the Drone Vision & Snapshots panel for the selected drone_id.
+ */
+async function refreshDroneVisionPanel() {
+    const selectEl = document.getElementById("vision-drone-select");
+    const streamImg = document.getElementById("vision-stream-img");
+    const galleryEl = document.getElementById("vision-snapshot-gallery");
+    if (!selectEl || !streamImg || !galleryEl) return;
+
+    const droneId = selectEl.value || "drone-1";
+    const base = window.VIRTUAL_CAM_URL || "http://localhost:8091";
+    const desiredSrc = `${base}/stream/${encodeURIComponent(droneId)}`;
+    if (streamImg.getAttribute("src") !== desiredSrc) {
+        streamImg.setAttribute("src", desiredSrc);
+    }
+
+    if (!window.ApiClient || typeof window.ApiClient.fetchTargets !== "function") return;
+    if (window.authManager && window.authManager.isAuthenticated && !window.authManager.isAuthenticated()) return;
+
+    for (const url of _visionSnapshotBlobUrls) {
+        URL.revokeObjectURL(url);
+    }
+    _visionSnapshotBlobUrls = [];
+
+    try {
+        const targetsData = await window.ApiClient.fetchTargets();
+        const targets = Array.isArray(targetsData)
+            ? targetsData
+            : (targetsData && (targetsData.items || targetsData.targets)) || [];
+        const matched = [];
+        for (const tgt of targets.slice(0, 10)) {
+            const tid = tgt.target_id || tgt.id;
+            if (!tid) continue;
+            const lineage = await window.ApiClient.fetchTargetLineage(tid);
+            const obsList = (lineage && (lineage.observations || lineage.detections)) || [];
+            for (const obs of obsList) {
+                if (obs.drone_id === droneId && obs.snapshot_proxy_url) {
+                    matched.push({ obs, targetClass: tgt.canonical_class || obs.target_class || "target" });
+                }
+            }
+        }
+
+        galleryEl.innerHTML = "";
+        if (matched.length === 0) {
+            const empty = document.createElement("span");
+            empty.className = "roster-table__empty";
+            empty.textContent = `No detection snapshots for ${droneId} yet`;
+            galleryEl.appendChild(empty);
+            return;
+        }
+
+        for (const item of matched.slice(-6).reverse()) {
+            const card = document.createElement("div");
+            card.style.cssText = "border:1px solid #374151;border-radius:4px;padding:4px;background:#111827;width:120px;";
+            const caption = document.createElement("div");
+            caption.style.cssText = "font-size:0.75rem;margin-bottom:3px;color:#d1d5db;";
+            caption.textContent = `${item.obs.drone_id}: ${item.targetClass}`;
+            const thumb = document.createElement("img");
+            thumb.alt = `${item.obs.drone_id} detection snapshot`;
+            thumb.style.cssText = "width:100%;height:72px;object-fit:cover;border-radius:3px;";
+            card.append(caption, thumb);
+            galleryEl.appendChild(card);
+
+            window.ApiClient.fetchSnapshotBlobUrl(item.obs.snapshot_proxy_url)
+                .then((blobUrl) => {
+                    if (blobUrl) {
+                        _visionSnapshotBlobUrls.push(blobUrl);
+                        thumb.src = blobUrl;
+                    }
+                })
+                .catch(() => {});
+        }
+    } catch (_err) {
+        // Ignore transient unauthenticated/network errors
     }
 }

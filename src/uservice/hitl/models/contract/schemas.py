@@ -30,3 +30,8 @@ class HitlPendingItem(BaseModel):
     is_threat_override: bool = False
     requires_override_justification: bool = False
     threat_conflicts: list[dict[str, Any]] = Field(default_factory=list)
+    drone_id: str | None = None
+    detection_event_id: str | None = None
+    snapshot_url: str | None = None
+    target_class: str | None = None
+    confidence: float | None = None

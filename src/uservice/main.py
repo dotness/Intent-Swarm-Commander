@@ -5,8 +5,10 @@ coordinated drone-swarm commands using pydantic-ai multi-agent pipelines
 and Temporal durable workflows.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 import logging
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,6 +49,51 @@ async def lifespan(app: FastAPI):
 
     async def _handle_detection(event) -> None:
         await correlator.ingest_detection(event)
+        if getattr(event, "flight_status", None) == "approaching" and getattr(event, "snapshot_uri", None):
+            import uuid
+            from sqlalchemy import select
+            from src.uservice.hitl.models.storage.decision import HitlDecision
+
+            try:
+                cmd_uuid = uuid.UUID(str(event.mission_id))
+            except (ValueError, TypeError):
+                cmd_uuid = uuid.UUID(str(event.swarm_id))
+
+            async with async_session() as session:
+                existing = await session.execute(
+                    select(HitlDecision.id).where(
+                        HitlDecision.status == "pending",
+                        HitlDecision.drone_id == event.drone_id,
+                        HitlDecision.swarm_command_id == cmd_uuid,
+                    )
+                )
+                if existing.scalar_one_or_none() is None:
+                    snap_url = (
+                        f"/api/v1/analytics/detections/{event.event_id}/snapshot"
+                        f"?project_id={event.project_id}"
+                    )
+                    session.add(
+                        HitlDecision(
+                            id=uuid.uuid4(),
+                            project_id=event.project_id,
+                            swarm_command_id=cmd_uuid,
+                            commander_id="system-vision",
+                            decision="pending",
+                            action_summary=(
+                                f"Target '{event.target_class}' detected by {event.drone_id} "
+                                f"(conf={float(event.confidence or 0.0):.2f}) — confirm engagement"
+                            ),
+                            timeout_seconds=120,
+                            status="pending",
+                            is_threat_override=False,
+                            drone_id=event.drone_id,
+                            detection_event_id=str(event.event_id),
+                            snapshot_url=snap_url,
+                            target_class=event.target_class,
+                            confidence=event.confidence,
+                        )
+                    )
+                    await session.commit()
 
     compactor = getattr(app.state, "parquet_compactor", None) or ParquetCompactor(minio_store=minio_store)
     ingestor = getattr(app.state, "telemetry_ingestor", None) or TelemetryIngestor(
@@ -65,8 +112,52 @@ async def lifespan(app: FastAPI):
     compactor.start()
     ingestor.start()
 
+    temporal_worker_task: asyncio.Task | None = None
+
+    async def _run_temporal_worker() -> None:
+        from temporalio.client import Client as TemporalClient
+        from temporalio.worker import Worker
+        from src.uservice.smeac.operations.process import (
+            ProcessSmeacWorkflow,
+            dispatch_edge_mission_activity,
+            parse_smeac_activity,
+            safety_check_activity,
+        )
+
+        temporal_url = os.getenv("TEMPORAL_URL", "temporal:7233")
+        task_queue = os.getenv("ISC_TASK_QUEUE", "isc-smeac-queue")
+        for attempt in range(1, 16):
+            try:
+                client = await TemporalClient.connect(temporal_url)
+                worker = Worker(
+                    client,
+                    task_queue=task_queue,
+                    workflows=[ProcessSmeacWorkflow],
+                    activities=[
+                        parse_smeac_activity,
+                        safety_check_activity,
+                        dispatch_edge_mission_activity,
+                    ],
+                )
+                logger.info("Temporal worker started on queue '%s' (%s)", task_queue, temporal_url)
+                await worker.run()
+                return
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Temporal worker connect attempt %d failed: %s", attempt, exc)
+                await asyncio.sleep(2.0)
+
+    temporal_worker_task = asyncio.create_task(_run_temporal_worker())
+
     yield
 
+    if temporal_worker_task is not None:
+        temporal_worker_task.cancel()
+        try:
+            await temporal_worker_task
+        except asyncio.CancelledError:
+            pass
     await ingestor.stop()
     await compactor.stop()
     await memgraph_client.close()
