@@ -12,6 +12,7 @@ from typing import Any
 from src.edge.telemetry.spool import EdgeSpool
 from src.edge.vision.inference import crop_detection_jpeg
 from src.uservice.telemetry.models.contract.events import (
+    EdgeAvoidanceCommand,
     SwarmTelemetryEvent,
     build_lwt_payload,
     build_telemetry_topic,
@@ -212,6 +213,60 @@ class EdgeTelemetryPublisher:
                 snapshot_local_path = str(snap_file)
 
         await self.publish_event(event, snapshot_local_path=snapshot_local_path)
+        return event
+
+    async def publish_avoidance_alert(
+        self,
+        *,
+        lat: float,
+        lon: float,
+        alt_m: float,
+        action: str,
+        previous_heading_deg: float,
+        commanded_heading_deg: float,
+        course_delta_deg: float,
+        obstacle_class: str | None = None,
+        bypass_direction: str | None = None,
+        confidence: float | None = None,
+        bbox: tuple[int, int, int, int] | list[int] | None = None,
+        trigger_detection_id: str | None = None,
+        mission_id: str | None = None,
+        flight_status: str = "bypassing",
+        speed_ms: float = 0.0,
+        battery_pct: float = 100.0,
+        drone_id: str | None = None,
+    ) -> SwarmTelemetryEvent:
+        """Emit a QoS 1 alert telemetry event proving edge-autonomous course modification."""
+        effective_drone_id = drone_id or self.drone_id
+        cmd = EdgeAvoidanceCommand(
+            action=action,  # type: ignore[arg-type]
+            obstacle_class=obstacle_class,
+            bypass_direction=bypass_direction,  # type: ignore[arg-type]
+            previous_heading_deg=float(previous_heading_deg) % 360.0,
+            commanded_heading_deg=float(commanded_heading_deg) % 360.0,
+            course_delta_deg=max(-180.0, min(180.0, float(course_delta_deg))),
+            trigger_detection_id=trigger_detection_id,
+            llm_matched_target=False,
+        )
+        event = SwarmTelemetryEvent(
+            project_id=self.project_id,
+            swarm_id=self.swarm_id,
+            drone_id=effective_drone_id,
+            metric_type="alert",
+            lat=lat,
+            lon=lon,
+            alt_m=alt_m,
+            heading_deg=float(commanded_heading_deg) % 360.0,
+            speed_ms=max(0.0, float(speed_ms)),
+            battery_pct=max(0.0, min(100.0, float(battery_pct))),
+            flight_status=flight_status,
+            target_class=obstacle_class,
+            confidence=confidence,
+            bbox=list(bbox) if bbox else None,
+            mission_id=mission_id,
+            extra=cmd.model_dump(mode="json"),
+        )
+        await self.publish_event(event)
         return event
 
     async def drain_backlog(self, batch_size: int = 50) -> int:

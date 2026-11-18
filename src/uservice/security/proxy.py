@@ -35,7 +35,7 @@ async def swarm_proxy_middleware(request: Request, call_next: Callable) -> Respo
         return await call_next(request)
 
     # Pass through endpoints handled directly by the microservice application routers
-    if any(endpoint in path for endpoint in ["/orders", "/hitl", "/telemetry"]):
+    if any(endpoint in path for endpoint in ["/orders", "/hitl", "/telemetry", "/audit"]):
         return await call_next(request)
 
     # Example path: /api/v1/swarms/1234/commands

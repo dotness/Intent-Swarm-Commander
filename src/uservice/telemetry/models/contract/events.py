@@ -141,6 +141,39 @@ def build_lwt_payload(project_id: str, swarm_id: str, drone_id: str) -> dict[str
     }
 
 
+class EdgeAvoidanceCommand(BaseModel):
+    """Provenance payload for an edge-autonomous obstacle avoidance command."""
+
+    command_source: Literal["edge_autonomous"] = "edge_autonomous"
+    decision_authority: Literal["edge"] = "edge"
+    action: Literal["obstacle_bypass", "resume_route", "obstructed_hold"]
+    obstacle_class: str | None = None
+    bypass_direction: Literal["left", "right"] | None = None
+    previous_heading_deg: float = Field(ge=0.0, lt=360.0)
+    commanded_heading_deg: float = Field(ge=0.0, lt=360.0)
+    course_delta_deg: float = Field(ge=-180.0, le=180.0)
+    trigger_detection_id: str | None = None
+    llm_matched_target: bool = False
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+def is_edge_autonomous_alert(event: SwarmTelemetryEvent) -> bool:
+    """Return True when a telemetry alert carries edge-autonomous avoidance provenance."""
+    return (
+        event.metric_type == "alert"
+        and isinstance(event.extra, dict)
+        and event.extra.get("command_source") == "edge_autonomous"
+    )
+
+
+def parse_edge_avoidance_command(event: SwarmTelemetryEvent) -> EdgeAvoidanceCommand | None:
+    """Validate and parse EdgeAvoidanceCommand from an edge-autonomous alert event."""
+    if not is_edge_autonomous_alert(event):
+        return None
+    assert event.extra is not None
+    return EdgeAvoidanceCommand.model_validate(event.extra)
+
+
 class DroneTelemetryPosition(BaseModel):
     lat: float | None = None
     lng: float | None = None
@@ -157,6 +190,7 @@ class DroneTelemetryItem(BaseModel):
     speed: float = 0.0
     current_mission: str = "idle"
     stale: bool = False
+    last_avoidance_event: dict[str, Any] | None = None
 
 
 class TelemetryProjectionResponse(BaseModel):

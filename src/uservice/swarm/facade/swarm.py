@@ -63,6 +63,37 @@ class SwarmFacade(DomainFacade):
             project_id=project_id,
         )
 
+    async def get_swarm_audit_events(
+        self,
+        swarm_id: uuid.UUID,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Return immutable C2 audit events for a swarm, including edge avoidance."""
+        self.require_scope("swarm:read")
+        from sqlalchemy import select
+        from src.uservice.operation.audit import AuditEvent
+
+        stmt = (
+            select(AuditEvent)
+            .where(AuditEvent.swarm_instance_id == swarm_id)
+            .order_by(AuditEvent.timestamp.desc())
+            .limit(limit)
+        )
+        rows = (await self.session.execute(stmt)).scalars().all()
+        items = [
+            {
+                "id": str(r.id),
+                "event_type": r.event_type.value if hasattr(r.event_type, "value") else str(r.event_type),
+                "actor_id": r.actor_id,
+                "actor_type": r.actor_type.value if hasattr(r.actor_type, "value") else str(r.actor_type),
+                "resource_id": r.resource_id,
+                "details": r.details,
+                "timestamp": r.timestamp.isoformat() if r.timestamp else None,
+            }
+            for r in rows
+        ]
+        return {"swarm_id": str(swarm_id), "events": items}
+
     async def delete_swarm(self, swarm_id: uuid.UUID) -> dict[str, Any]:
         """Initiate graceful termination of a swarm instance."""
         # await self.permissions.require_access("swarm:delete")

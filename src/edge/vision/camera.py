@@ -6,11 +6,12 @@ and provides them to the YOLO-E inference pipeline.
 
 import logging
 import os
+import threading
 from typing import Generator
 
-logger = logging.getLogger(__name__)
-
 import cv2
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_camera_source(device_id: int | str | None) -> int | str:
@@ -31,6 +32,18 @@ class CameraStream:
         self.width = width
         self.height = height
         self._capture = None
+        self._frame_lock = threading.Lock()
+        self._latest_frame = None
+        self._reader_running = False
+        self._reader_thread: threading.Thread | None = None
+
+    def _reader_loop(self) -> None:
+        while self._reader_running and self._capture is not None:
+            ret, frame = self._capture.read()
+            if not ret:
+                continue
+            with self._frame_lock:
+                self._latest_frame = frame
 
     def open(self) -> bool:
         """Open the camera device or virtual video stream for capture."""
@@ -42,19 +55,25 @@ class CameraStream:
             logger.error("Failed to open camera source %s", self.device_id)
             return False
 
+        self._capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         if isinstance(self.device_id, int):
             self._capture.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             self._capture.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        self._reader_running = True
+        self._reader_thread = threading.Thread(target=self._reader_loop, daemon=True)
+        self._reader_thread.start()
         logger.info("Camera opened: source=%s resolution=%dx%d", self.device_id, self.width, self.height)
         return True
 
     def read_frame(self):
-        """Read a single frame from the camera.
-
-        Returns the frame as a numpy array, or None if capture is unavailable.
-        """
+        """Read the latest frame from the camera without stale MJPEG buffering."""
         if self._capture is None:
             return None
+
+        with self._frame_lock:
+            frame = self._latest_frame
+        if frame is not None:
+            return frame
 
         ret, frame = self._capture.read()
         if not ret:
@@ -73,6 +92,12 @@ class CameraStream:
 
     def close(self) -> None:
         """Release the camera device."""
+        self._reader_running = False
+        if self._reader_thread is not None:
+            self._reader_thread.join(timeout=1.0)
+            self._reader_thread = None
+        with self._frame_lock:
+            self._latest_frame = None
         if self._capture is not None:
             self._capture.release()
             self._capture = None

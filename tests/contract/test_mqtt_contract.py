@@ -140,3 +140,48 @@ def test_schema_validation_and_topic_consistency():
     mismatched_topic = build_telemetry_topic("other-theater", sid, "drone-1", "navigation")
     with pytest.raises(ValueError):
         validate_topic_matches_event(mismatched_topic, valid_evt)
+
+
+def test_edge_autonomous_avoidance_alert_contract():
+    from src.uservice.telemetry.models.contract.events import (
+        EdgeAvoidanceCommand,
+        is_edge_autonomous_alert,
+        parse_edge_avoidance_command,
+    )
+
+    sid = str(uuid.uuid4())
+    cmd = EdgeAvoidanceCommand(
+        action="obstacle_bypass",
+        obstacle_class="lamp post",
+        bypass_direction="right",
+        previous_heading_deg=45.0,
+        commanded_heading_deg=120.0,
+        course_delta_deg=75.0,
+        trigger_detection_id="det-001",
+        llm_matched_target=False,
+    )
+    evt = SwarmTelemetryEvent(
+        project_id="default-theater",
+        swarm_id=sid,
+        drone_id="drone-1",
+        metric_type="alert",
+        lat=47.3977,
+        lon=8.5456,
+        alt_m=505.0,
+        heading_deg=120.0,
+        flight_status="bypassing",
+        target_class="lamp post",
+        confidence=0.88,
+        bbox=[280, 110, 360, 420],
+        mission_id="cmd-001",
+        extra=cmd.model_dump(mode="json"),
+    )
+
+    assert classify_qos_and_priority(evt) == (1, 1)
+    assert is_edge_autonomous_alert(evt) is True
+    parsed = parse_edge_avoidance_command(evt)
+    assert parsed is not None
+    assert parsed.command_source == "edge_autonomous"
+    assert parsed.decision_authority == "edge"
+    assert parsed.bypass_direction == "right"
+    assert parsed.course_delta_deg == 75.0

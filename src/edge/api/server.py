@@ -200,6 +200,10 @@ def create_edge_app() -> "FastAPI":
 
     class TargetRequest(BaseModel):
         target_object_class: str = Field(description="YOLO-E class to identify")
+        target_attributes: dict[str, str] | None = Field(
+            default=None,
+            description="Optional attributes for edge LLM target-vs-obstacle matching",
+        )
         command_id: str = Field(description="Originating swarm command ID")
         confidence_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
         detection_mode: Literal["report_only", "intercept"] = Field(
@@ -209,6 +213,10 @@ def create_edge_app() -> "FastAPI":
         drone_id: str | None = Field(
             default=None,
             description="Target drone channel (defaults to edge DRONE_ID env var)",
+        )
+        obstacle_avoidance_enabled: bool = Field(
+            default=True,
+            description="Enable edge-autonomous obstacle detection and dynamic lateral bypass",
         )
 
     @app.post("/target")
@@ -222,6 +230,8 @@ def create_edge_app() -> "FastAPI":
             command_id=body.command_id,
             confidence_threshold=body.confidence_threshold,
         )
+        _telemetry_state.pop("last_avoidance_command", None)
+        _telemetry_state["status"] = "searching"
         logger.info(
             "Target assigned: drone=%s class='%s' mode='%s'",
             target_drone_id,
@@ -270,6 +280,8 @@ def create_edge_app() -> "FastAPI":
                 detection_mode=body.detection_mode,
                 on_detect_intercept=_cancel_nav_on_intercept if target_drone_id == default_drone_id else None,
                 drone_id=target_drone_id,
+                target_attributes=body.target_attributes,
+                obstacle_avoidance_enabled=body.obstacle_avoidance_enabled,
             )
             _controllers[target_drone_id] = ctrl
             if target_drone_id == default_drone_id:
@@ -318,6 +330,8 @@ def create_edge_app() -> "FastAPI":
             t = _vision_tasks.pop(d_id, None)
             if t and not t.done():
                 t.cancel()
+        _telemetry_state.pop("last_avoidance_command", None)
+        _telemetry_state["status"] = "idle"
         return {"status": "stopped", "stopped": targets_to_stop}
 
     @app.get("/target")
@@ -434,12 +448,25 @@ def create_edge_app() -> "FastAPI":
 
     @app.get("/telemetry")
     async def telemetry():
-        if _nav_task and not _nav_task.done():
+        if _flight_controller and _flight_controller.state.status in (
+            "bypassing",
+            "resuming",
+            "obstructed_hold",
+            "approaching",
+            "arrived",
+        ):
+            _telemetry_state["status"] = _flight_controller.state.status
+        elif _nav_task and not _nav_task.done():
             pass
         elif _flight_controller and _flight_controller.state.status != "searching":
             _telemetry_state["status"] = _flight_controller.state.status
         elif _current_assignment:
             _telemetry_state["status"] = "active"
+        if _flight_controller:
+            _telemetry_state["target_detected"] = bool(_flight_controller.state.target_detected)
+            _telemetry_state["target_intercepted"] = bool(_flight_controller._intercepted)
+            if _flight_controller.last_avoidance_command is not None:
+                _telemetry_state["last_avoidance_command"] = _flight_controller.last_avoidance_command
         return _telemetry_state
 
     @app.get("/spool/status")

@@ -364,7 +364,11 @@ async function pollTelemetry() {
         const tdStatus = document.createElement('td');
         const statusSpan = document.createElement('span');
         statusSpan.style.color = 'var(--color-primary)';
-        statusSpan.textContent = String(drone.status || 'active');
+        const avoidance = drone.last_avoidance_event;
+        const statusText = avoidance && avoidance.command_source === 'edge_autonomous'
+            ? `${String(drone.status || 'active')} (${avoidance.action}: ${avoidance.bypass_direction || 'hold'})`
+            : String(drone.status || 'active');
+        statusSpan.textContent = statusText;
         tdStatus.appendChild(statusSpan);
 
         const tdBat = document.createElement('td');

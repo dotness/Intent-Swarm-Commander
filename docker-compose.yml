@@ -141,6 +141,7 @@ services:
       - VIRTUAL_CAM_FPS=${VIRTUAL_CAM_FPS:-5}
     volumes:
       - ./scripts:/app/scripts:ro
+      - ./tests/videos:/app/tests/videos:ro
     command: python3 /app/scripts/virtual_cam_server.py
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health')"]
@@ -169,6 +170,8 @@ services:
       - MAVSDK_URL=${MAVSDK_URL:-udp://:14540}
       - CAMERA_SOURCE=${CAMERA_SOURCE:-http://virtual_cam:8091/stream}
       - VIRTUAL_CAM_BASE_URL=${VIRTUAL_CAM_BASE_URL:-http://virtual_cam:8091}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - EDGE_LLM_MODEL=${EDGE_LLM_MODEL:-gemini-2.5-flash-lite}
     command: python3 -c "from src.edge.api.server import run_edge_server; run_edge_server(host='0.0.0.0', port=8090)"
     depends_on:
       mosquitto:

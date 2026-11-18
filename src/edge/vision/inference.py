@@ -5,11 +5,29 @@ and classify target objects in real-time on the Raspberry Pi 5.
 """
 
 import logging
-from dataclasses import dataclass
+import os
+import uuid
+from dataclasses import dataclass, field
+from typing import Literal
+
+import cv2
+from ultralytics import YOLOWorld
 
 logger = logging.getLogger(__name__)
 
-from ultralytics import YOLO
+DEFAULT_DETECTION_CLASSES: list[str] = [
+    "person",
+    "car",
+    "truck",
+    "bus",
+    "bench",
+    "street lamp",
+    "lamp post",
+    "pole",
+    "tree",
+    "traffic light",
+    "wall",
+]
 
 
 @dataclass
@@ -20,6 +38,80 @@ class Detection:
     confidence: float
     bbox: tuple[int, int, int, int]  # x1, y1, x2, y2
     center: tuple[int, int]  # center_x, center_y
+
+
+@dataclass
+class CorridorDetection:
+    """Detection enriched with forward-corridor occupancy and proximity metrics."""
+
+    class_name: str
+    confidence: float
+    bbox: tuple[int, int, int, int]
+    center: tuple[int, int]
+    area_ratio: float
+    in_forward_corridor: bool
+    detection_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+
+
+def compute_corridor_occupancy(
+    detections: list[Detection],
+    frame_width: int,
+    frame_height: int,
+    corridor_half_width_ratio: float = 0.18,
+    min_area_ratio: float = 0.02,
+) -> list[CorridorDetection]:
+    """Compute forward-corridor overlap and frame-area ratio for each detection."""
+    w = max(1, int(frame_width))
+    h = max(1, int(frame_height))
+    frame_area = float(w * h)
+    corr_x1 = w * (0.5 - corridor_half_width_ratio)
+    corr_x2 = w * (0.5 + corridor_half_width_ratio)
+
+    results: list[CorridorDetection] = []
+    for det in detections:
+        x1, y1, x2, y2 = det.bbox
+        bw = max(0, x2 - x1)
+        bh = max(0, y2 - y1)
+        area_ratio = float(bw * bh) / frame_area
+        overlaps_corridor = (x2 >= corr_x1) and (x1 <= corr_x2)
+        in_corridor = overlaps_corridor and (area_ratio >= min_area_ratio)
+        results.append(
+            CorridorDetection(
+                class_name=det.class_name,
+                confidence=det.confidence,
+                bbox=det.bbox,
+                center=det.center,
+                area_ratio=area_ratio,
+                in_forward_corridor=in_corridor,
+            )
+        )
+    return results
+
+
+def select_clearest_lateral_side(
+    detections: list[Detection],
+    frame_width: int,
+    frame_height: int,
+) -> Literal["left", "right"]:
+    """Choose the lateral side (left or right) with lower obstacle occupancy."""
+    w = max(1, int(frame_width))
+    h = max(1, int(frame_height))
+    mid_x = w / 2.0
+    half_area = max(1.0, mid_x * h)
+
+    left_occ = 0.0
+    right_occ = 0.0
+    for det in detections:
+        x1, y1, x2, y2 = det.bbox
+        bh = max(0, y2 - y1)
+        if bh == 0:
+            continue
+        lw = max(0.0, min(float(x2), mid_x) - max(float(x1), 0.0))
+        rw = max(0.0, min(float(x2), float(w)) - max(float(x1), mid_x))
+        left_occ += (lw * bh) / half_area
+        right_occ += (rw * bh) / half_area
+
+    return "left" if left_occ < right_occ else "right"
 
 
 class YoloEInference:
@@ -33,20 +125,35 @@ class YoloEInference:
         Minimum confidence to accept a detection (default 0.5).
     """
 
-    def __init__(self, model_path: str = "yolov8n.pt", confidence_threshold: float = 0.5):
-        self.model_path = model_path
+    def __init__(self, model_path: str | None = None, confidence_threshold: float = 0.4):
+        self.model_path = model_path or os.getenv("EDGE_YOLO_MODEL", "yolov8s-worldv2.pt")
         self.confidence_threshold = confidence_threshold
         self._model = None
+        self._active_classes: list[str] = list(DEFAULT_DETECTION_CLASSES)
+
+    def set_target_vocabulary(self, target_class: str | None) -> None:
+        """Ensure the ordered target class is included in the open-vocabulary detector."""
+        classes = list(DEFAULT_DETECTION_CLASSES)
+        if target_class and target_class.strip():
+            norm = target_class.strip().lower()
+            if norm not in {c.lower() for c in classes}:
+                classes.append(target_class.strip())
+        if classes != self._active_classes:
+            self._active_classes = classes
+            if self._model is not None and hasattr(self._model, "set_classes"):
+                self._model.set_classes(self._active_classes)
 
     def load(self) -> bool:
-        """Load the YOLO-E model into memory."""
+        """Load the open-vocabulary YOLO-World model into memory."""
 
         try:
-            self._model = YOLO(self.model_path)
-            logger.info("YOLO-E model loaded from %s", self.model_path)
+            self._model = YOLOWorld(self.model_path)
+            if hasattr(self._model, "set_classes"):
+                self._model.set_classes(self._active_classes)
+            logger.info("YOLO-World model loaded from %s", self.model_path)
             return True
         except Exception as e:
-            logger.error("Failed to load YOLO-E model: %s", e)
+            logger.error("Failed to load YOLO-World model: %s", e)
             return False
 
     def detect(self, frame, target_class: str | None = None) -> list[Detection]:
@@ -123,8 +230,6 @@ def crop_detection_jpeg(
     cx2 = max(cx1 + 1, min(w, int(x2) + padding_px))
     cy2 = max(cy1 + 1, min(h, int(y2) + padding_px))
     crop = frame[cy1:cy2, cx1:cx2]
-
-    import cv2
 
     ok, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, int(quality)])
     if not ok:

@@ -149,3 +149,18 @@ async def get_swarm_telemetry(
         raise HTTPException(status_code=404, detail=str(e))
 
     return projection.model_dump()
+
+
+@router.get("/swarms/{swarm_id}/audit")
+async def get_swarm_audit_events(
+    swarm_id: uuid.UUID,
+    limit: int = Query(default=50, ge=1, le=200),
+    user: dict = Depends(require_scopes(["swarm:read"])),
+    session: AsyncSession = Depends(get_db),
+):
+    """Return immutable C2 audit events for a swarm, including edge-autonomous avoidance."""
+    from src.uservice.base.models.api.response import Response
+
+    facade = await SwarmFacade.create(session=session, user=user)
+    data = await facade.get_swarm_audit_events(swarm_id=swarm_id, limit=limit)
+    return Response.create(data=data)

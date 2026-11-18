@@ -171,7 +171,7 @@ async def dispatch_edge_mission_activity(payload: dict) -> dict:
             if not target_cls:
                 continue
             mission_type = str(cmd.get("mission_type", "")).lower()
-            detection_mode = "intercept" if mission_type == "strike" else "report_only"
+            detection_mode = "intercept" if mission_type in ("strike", "intercept") else "report_only"
             async with httpx.AsyncClient(timeout=10.0) as client:
                 t_resp = await client.post(
                     f"{endpoint_url.rstrip('/')}/target",

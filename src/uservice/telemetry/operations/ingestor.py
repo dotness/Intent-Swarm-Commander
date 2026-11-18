@@ -7,10 +7,13 @@ from datetime import datetime, timezone
 import logging
 import os
 from typing import Any, Awaitable, Callable
+import uuid
 
+from src.uservice.operation.audit import ActorType, AuditEvent, AuditEventType
 from src.uservice.telemetry.models.contract.events import (
     WILDCARD_TELEMETRY_TOPIC,
     SwarmTelemetryEvent,
+    is_edge_autonomous_alert,
     validate_topic_matches_event,
 )
 from src.uservice.telemetry.models.storage.live_state import LiveTelemetryStore, SwarmLiveState
@@ -56,12 +59,75 @@ class TelemetryIngestor:
         self.compactor.enqueue(event)
 
         if self.db_session_factory is not None:
-            await self._upsert_live_state(event)
+            await self._persist_telemetry_and_audit(event)
 
         if event.metric_type == "detection" and self.detection_callback is not None:
             await self.detection_callback(event)
 
         return True
+
+    async def _persist_telemetry_and_audit(self, event: SwarmTelemetryEvent) -> None:
+        """Persist live telemetry state and optional edge-avoidance audit in one transaction."""
+        key_id = f"{event.project_id}:{event.swarm_id}:{event.drone_id}"
+        async with self.db_session_factory() as session:
+            row = await session.get(SwarmLiveState, key_id)
+            now = datetime.now(timezone.utc)
+            if row is None:
+                row = SwarmLiveState(
+                    id=key_id,
+                    project_id=event.project_id,
+                    swarm_id=str(event.swarm_id),
+                    drone_id=event.drone_id,
+                    metric_type=event.metric_type,
+                    lat=event.lat,
+                    lon=event.lon,
+                    alt_m=event.alt_m,
+                    heading_deg=event.heading_deg,
+                    speed_ms=event.speed_ms,
+                    battery_pct=event.battery_pct,
+                    flight_status=event.flight_status,
+                    last_event_id=str(event.event_id),
+                    replayed=event.replayed,
+                    last_seen_utc=now,
+                )
+                session.add(row)
+            else:
+                if (not event.replayed) or event.timestamp >= row.last_seen_utc:
+                    row.metric_type = event.metric_type
+                    row.lat = event.lat
+                    row.lon = event.lon
+                    row.alt_m = event.alt_m
+                    row.heading_deg = event.heading_deg
+                    row.speed_ms = event.speed_ms
+                    row.battery_pct = event.battery_pct
+                    row.flight_status = event.flight_status
+                    row.last_event_id = str(event.event_id)
+                    row.replayed = event.replayed
+                    row.last_seen_utc = now
+
+            if is_edge_autonomous_alert(event):
+                try:
+                    swarm_uuid = uuid.UUID(str(event.swarm_id))
+                except ValueError:
+                    swarm_uuid = None
+                session.add(
+                    AuditEvent(
+                        event_type=AuditEventType.COMMAND_EXECUTED,
+                        actor_id=f"edge:{event.drone_id}",
+                        actor_type=ActorType.AGENT,
+                        swarm_instance_id=swarm_uuid,
+                        resource_id=event.drone_id,
+                        details={
+                            **(event.extra or {}),
+                            "event_id": str(event.event_id),
+                            "project_id": event.project_id,
+                            "swarm_id": str(event.swarm_id),
+                            "flight_status": event.flight_status,
+                        },
+                    )
+                )
+
+            await session.commit()
 
     async def _upsert_live_state(self, event: SwarmTelemetryEvent) -> None:
         key_id = f"{event.project_id}:{event.swarm_id}:{event.drone_id}"

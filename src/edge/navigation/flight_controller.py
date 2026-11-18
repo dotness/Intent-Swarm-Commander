@@ -12,7 +12,15 @@ import time
 from dataclasses import dataclass
 
 from src.edge.vision.camera import CameraStream
-from src.edge.vision.inference import Detection, YoloEInference, crop_detection_jpeg
+from src.edge.vision.inference import (
+    CorridorDetection,
+    Detection,
+    YoloEInference,
+    compute_corridor_occupancy,
+    crop_detection_jpeg,
+    select_clearest_lateral_side,
+)
+from src.edge.vision.target_matcher import EdgeTargetMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +62,10 @@ class FlightController:
         on_detect_intercept=None,
         publish_interval_s: float = 1.0,
         drone_id: str | None = None,
+        target_matcher: EdgeTargetMatcher | None = None,
+        target_attributes: dict[str, str] | None = None,
+        obstacle_avoidance_enabled: bool = True,
+        loop_interval_s: float = 0.1,
     ):
         self.camera = camera
         self.inference = inference
@@ -67,9 +79,18 @@ class FlightController:
         self.detection_mode = detection_mode
         self.on_detect_intercept = on_detect_intercept
         self.publish_interval_s = publish_interval_s
+        self.target_matcher = target_matcher if target_matcher is not None else EdgeTargetMatcher()
+        self.target_attributes = target_attributes
+        self.obstacle_avoidance_enabled = obstacle_avoidance_enabled
+        self.loop_interval_s = loop_interval_s
+        self.last_avoidance_command: dict | None = None
         self._intercepted = False
         self._last_publish_ts = 0.0
         self._last_intercept_cmd_ts = 0.0
+        self._last_bypass_cmd_ts = 0.0
+        self._pre_bypass_heading_deg: float | None = None
+        self._clear_corridor_frames = 0
+        self._consecutive_missing_frames = 0
         self._telemetry_task = None
         self.last_lat: float = 0.0
         self.last_lon: float = 0.0
@@ -112,13 +133,16 @@ class FlightController:
         try:
             await self._navigation_loop()
         finally:
+            if self._telemetry_task is not None and not self._telemetry_task.done():
+                self._telemetry_task.cancel()
             self.camera.close()
 
         return self.state
 
-    async def _navigation_loop(self) -> None:
-        """Core detect-and-approach loop."""
-        max_iterations = 1000  # Safety bound
+    async def _navigation_loop(self, max_iterations: int = 1000) -> None:
+        """Core detect, LLM target-vs-obstacle discrimination, and approach/bypass loop."""
+        if hasattr(self.inference, "set_target_vocabulary"):
+            await asyncio.to_thread(self.inference.set_target_vocabulary, self.target_class)
         iteration = 0
 
         while self._running and iteration < max_iterations:
@@ -126,13 +150,81 @@ class FlightController:
 
             frame = await asyncio.to_thread(self.camera.read_frame)
             if frame is None:
-                logger.warning("No frame available — pausing")
-                await asyncio.sleep(0.5)
+                self._consecutive_missing_frames += 1
+                logger.warning("No frame available (%d) — pausing", self._consecutive_missing_frames)
+                if self.obstacle_avoidance_enabled and self._consecutive_missing_frames >= 3:
+                    await self._enter_obstructed_hold(reason="perception_lost")
+                await asyncio.sleep(self.loop_interval_s)
                 continue
+            self._consecutive_missing_frames = 0
 
-            detections = await asyncio.to_thread(
-                self.inference.detect, frame, target_class=self.target_class
-            )
+            frame_h = int(frame.shape[0]) if hasattr(frame, "shape") else getattr(self.camera, "height", 480)
+            frame_w = int(frame.shape[1]) if hasattr(frame, "shape") else getattr(self.camera, "width", 640)
+
+            if self.obstacle_avoidance_enabled:
+                all_detections = await asyncio.to_thread(
+                    self.inference.detect, frame, target_class=None
+                )
+                ordered_targets: list[Detection] = []
+                obstacles: list[Detection] = []
+                if all_detections:
+                    classifications = await asyncio.gather(
+                        *(
+                            asyncio.to_thread(
+                                self.target_matcher.classify,
+                                self.mission_id,
+                                self.target_class,
+                                det.class_name,
+                                self.target_attributes,
+                            )
+                            for det in all_detections
+                        )
+                    )
+                    for det, cls_res in zip(all_detections, classifications):
+                        if cls_res.is_ordered_target:
+                            ordered_targets.append(det)
+                        else:
+                            obstacles.append(det)
+
+                if ordered_targets:
+                    best_target = max(ordered_targets, key=lambda d: d.confidence)
+                    self.state.target_detected = True
+                    self.state.target_confidence = best_target.confidence
+                    self.state.target_center = best_target.center
+                    if self.detection_mode == "intercept" and not self._intercepted:
+                        self._intercepted = True
+                        if self.on_detect_intercept is not None:
+                            await self.on_detect_intercept()
+
+                corridor_obstacles = [
+                    cd
+                    for cd in compute_corridor_occupancy(obstacles, frame_w, frame_h)
+                    if cd.in_forward_corridor
+                ]
+                if corridor_obstacles:
+                    self._clear_corridor_frames = 0
+                    if self._is_corridor_fully_blocked(obstacles, frame_w):
+                        await self._enter_obstructed_hold(
+                            reason="corridor_blocked",
+                            obstacle=corridor_obstacles[0],
+                        )
+                    else:
+                        primary = max(corridor_obstacles, key=lambda c: c.area_ratio)
+                        direction = select_clearest_lateral_side(obstacles, frame_w, frame_h)
+                        await self._execute_lateral_bypass(primary, direction)
+                    await asyncio.sleep(self.loop_interval_s)
+                    continue
+
+                if self.state.status == "bypassing":
+                    self._clear_corridor_frames += 1
+                    if self._clear_corridor_frames >= 3:
+                        await self._resume_route(has_target=bool(ordered_targets))
+
+                detections = ordered_targets
+            else:
+                detections = await asyncio.to_thread(
+                    self.inference.detect, frame, target_class=self.target_class
+                )
 
             if detections:
                 best = max(detections, key=lambda d: d.confidence)
@@ -150,7 +242,6 @@ class FlightController:
                     if not self._intercepted and self.on_detect_intercept is not None:
                         self._intercepted = True
                         await self.on_detect_intercept()
-                    frame_w = int(frame.shape[1]) if hasattr(frame, "shape") else self.camera.width
                     frame_center_x = frame_w // 2
                     offset_x = best.center[0] - frame_center_x
                     await self._apply_heading_correction(offset_x, frame_w=frame_w)
@@ -165,7 +256,7 @@ class FlightController:
                     self._last_publish_ts = now
                     snapshot_bytes: bytes | None = None
                     try:
-                        snapshot_bytes = crop_detection_jpeg(frame, best.bbox)
+                        snapshot_bytes = await asyncio.to_thread(crop_detection_jpeg, frame, best.bbox)
                     except (ValueError, RuntimeError):
                         snapshot_bytes = None
                     await self.telemetry_publisher.publish_detection(
@@ -187,9 +278,173 @@ class FlightController:
                     break
             else:
                 self.state.target_detected = False
-                self.state.status = "searching"
+                if self.state.status not in ("bypassing", "resuming", "obstructed_hold", "arrived"):
+                    self.state.status = "approaching" if self._intercepted else "searching"
 
-            await asyncio.sleep(0.1)  # ~10 FPS processing rate
+            await asyncio.sleep(self.loop_interval_s)
+
+    @staticmethod
+    def _is_corridor_fully_blocked(obstacles: list[Detection], frame_w: int) -> bool:
+        w = max(1, int(frame_w))
+        for obs in obstacles:
+            width_ratio = max(0, obs.bbox[2] - obs.bbox[0]) / float(w)
+            if width_ratio >= 0.80:
+                return True
+        return False
+
+    async def _command_heading_step(self, target_bearing_deg: float, step_m: float = 40.0) -> None:
+        if self.drone and (abs(self.last_lat) + abs(self.last_lon)) > 0.1:
+            rad = math.radians(target_bearing_deg)
+            dlat = (step_m * math.cos(rad)) / 111111.0
+            dlon = (step_m * math.sin(rad)) / (111111.0 * max(0.2, math.cos(math.radians(self.last_lat))))
+            try:
+                await self.drone.action.goto_location(
+                    self.last_lat + dlat,
+                    self.last_lon + dlon,
+                    max(self.last_alt_m, 45.0),
+                    target_bearing_deg,
+                )
+            except Exception as e:
+                logger.error("Failed to command goto_location: %s", e)
+
+    async def _execute_lateral_bypass(
+        self,
+        obstacle: CorridorDetection,
+        direction: str,
+    ) -> None:
+        if self._pre_bypass_heading_deg is None:
+            self._pre_bypass_heading_deg = self.last_heading_deg % 360.0
+
+        now = time.monotonic()
+        first_bypass = self.state.status != "bypassing"
+        self.state.status = "bypassing"
+        if not first_bypass and (now - self._last_bypass_cmd_ts) < 1.5:
+            return
+        self._last_bypass_cmd_ts = now
+
+        delta_deg = 75.0 if direction == "right" else -75.0
+        prev_heading = self.last_heading_deg % 360.0
+        cmd_heading = (prev_heading + delta_deg) % 360.0
+        self.last_heading_deg = cmd_heading
+
+        await self._command_heading_step(cmd_heading, step_m=50.0)
+        self.last_avoidance_command = {
+            "command_source": "edge_autonomous",
+            "decision_authority": "edge",
+            "action": "obstacle_bypass",
+            "obstacle_class": obstacle.class_name,
+            "bypass_direction": direction,
+            "previous_heading_deg": prev_heading,
+            "commanded_heading_deg": cmd_heading,
+            "course_delta_deg": delta_deg,
+            "trigger_detection_id": obstacle.detection_id,
+        }
+        if self.telemetry_publisher is not None and hasattr(
+            self.telemetry_publisher, "publish_avoidance_alert"
+        ):
+            await self.telemetry_publisher.publish_avoidance_alert(
+                lat=self.last_lat,
+                lon=self.last_lon,
+                alt_m=self.last_alt_m,
+                action="obstacle_bypass",
+                previous_heading_deg=prev_heading,
+                commanded_heading_deg=cmd_heading,
+                course_delta_deg=delta_deg,
+                obstacle_class=obstacle.class_name,
+                bypass_direction=direction,
+                confidence=obstacle.confidence,
+                bbox=obstacle.bbox,
+                trigger_detection_id=obstacle.detection_id,
+                mission_id=self.mission_id,
+                flight_status="bypassing",
+                drone_id=self.drone_id,
+            )
+
+    async def _resume_route(self, has_target: bool = False) -> None:
+        prev_heading = self.last_heading_deg % 360.0
+        resume_heading = (
+            self._pre_bypass_heading_deg
+            if self._pre_bypass_heading_deg is not None
+            else prev_heading
+        )
+        delta_deg = ((resume_heading - prev_heading + 180.0) % 360.0) - 180.0
+        self.state.status = "resuming"
+        self.last_heading_deg = resume_heading
+        self._pre_bypass_heading_deg = None
+        self._clear_corridor_frames = 0
+
+        await self._command_heading_step(resume_heading, step_m=80.0)
+        self.last_avoidance_command = {
+            "command_source": "edge_autonomous",
+            "decision_authority": "edge",
+            "action": "resume_route",
+            "obstacle_class": None,
+            "bypass_direction": None,
+            "previous_heading_deg": prev_heading,
+            "commanded_heading_deg": resume_heading,
+            "course_delta_deg": delta_deg,
+        }
+        if self.telemetry_publisher is not None and hasattr(
+            self.telemetry_publisher, "publish_avoidance_alert"
+        ):
+            await self.telemetry_publisher.publish_avoidance_alert(
+                lat=self.last_lat,
+                lon=self.last_lon,
+                alt_m=self.last_alt_m,
+                action="resume_route",
+                previous_heading_deg=prev_heading,
+                commanded_heading_deg=resume_heading,
+                course_delta_deg=delta_deg,
+                mission_id=self.mission_id,
+                flight_status="resuming",
+                drone_id=self.drone_id,
+            )
+        self.state.status = "approaching" if has_target else "searching"
+
+    async def _enter_obstructed_hold(
+        self,
+        reason: str,
+        obstacle: CorridorDetection | None = None,
+    ) -> None:
+        already_holding = self.state.status == "obstructed_hold"
+        self.state.status = "obstructed_hold"
+        if self.drone and hasattr(self.drone.action, "hold"):
+            try:
+                await self.drone.action.hold()
+            except Exception as e:
+                logger.error("Failed to command hold: %s", e)
+        if already_holding:
+            return
+        cur_heading = self.last_heading_deg % 360.0
+        self.last_avoidance_command = {
+            "command_source": "edge_autonomous",
+            "decision_authority": "edge",
+            "action": "obstructed_hold",
+            "obstacle_class": obstacle.class_name if obstacle else reason,
+            "bypass_direction": None,
+            "previous_heading_deg": cur_heading,
+            "commanded_heading_deg": cur_heading,
+            "course_delta_deg": 0.0,
+        }
+        if self.telemetry_publisher is not None and hasattr(
+            self.telemetry_publisher, "publish_avoidance_alert"
+        ):
+            await self.telemetry_publisher.publish_avoidance_alert(
+                lat=self.last_lat,
+                lon=self.last_lon,
+                alt_m=self.last_alt_m,
+                action="obstructed_hold",
+                previous_heading_deg=cur_heading,
+                commanded_heading_deg=cur_heading,
+                course_delta_deg=0.0,
+                obstacle_class=obstacle.class_name if obstacle else reason,
+                confidence=obstacle.confidence if obstacle else None,
+                bbox=obstacle.bbox if obstacle else None,
+                trigger_detection_id=obstacle.detection_id if obstacle else None,
+                mission_id=self.mission_id,
+                flight_status="obstructed_hold",
+                drone_id=self.drone_id,
+            )
 
     async def _apply_heading_correction(self, offset_x: int, frame_w: int = 640) -> None:
         """Divert flight path toward detected target based on horizontal frame offset.

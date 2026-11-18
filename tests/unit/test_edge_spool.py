@@ -202,6 +202,7 @@ async def test_flight_controller_publishes_detection_with_crop_and_mission_id(
         target_class="truck",
         telemetry_publisher=pub,
         mission_id="cmd-mission-42",
+        obstacle_avoidance_enabled=False,
     )
     fc._running = True
     fc.last_lat = 52.5300

@@ -15,6 +15,7 @@ from src.uservice.telemetry.models.contract.events import (
     DroneTelemetryItem,
     DroneTelemetryPosition,
     SwarmTelemetryEvent,
+    is_edge_autonomous_alert,
 )
 
 
@@ -78,12 +79,21 @@ class LiveTelemetryStore:
 
             key = (event.project_id, str(event.swarm_id), event.drone_id)
             prev = self._drones.get(key)
+            prev_avoidance = prev.get("last_avoidance") if prev else None
+            last_avoidance = (
+                {**(event.extra or {}), "event_id": eid, "timestamp": event.timestamp.isoformat()}
+                if is_edge_autonomous_alert(event)
+                else prev_avoidance
+            )
             # Only overwrite live projection if incoming event is live or newer than last stored
             if prev is None or (not event.replayed) or event.timestamp >= prev["event"].timestamp:
                 self._drones[key] = {
                     "event": event,
                     "received_at": now,
+                    "last_avoidance": last_avoidance,
                 }
+            elif last_avoidance is not None and prev is not None:
+                prev["last_avoidance"] = last_avoidance
             self._total_ingested += 1
             return True
 
@@ -127,6 +137,7 @@ class LiveTelemetryStore:
                     speed=ev.speed_ms,
                     current_mission=ev.flight_status,
                     stale=is_stale,
+                    last_avoidance_event=entry.get("last_avoidance"),
                 )
             )
 
