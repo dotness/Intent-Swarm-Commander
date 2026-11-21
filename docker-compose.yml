@@ -138,7 +138,11 @@ services:
     restart: unless-stopped
     environment:
       - VIRTUAL_VIDEO_PATH=${VIRTUAL_VIDEO_PATH:-}
-      - VIRTUAL_CAM_FPS=${VIRTUAL_CAM_FPS:-5}
+      - VIRTUAL_CAM_FPS=${VIRTUAL_CAM_FPS:-20}
+      - MQTT_BROKER_HOST=${MQTT_BROKER_HOST:-mosquitto}
+      - MQTT_BROKER_PORT=${MQTT_BROKER_PORT:-1883}
+    depends_on:
+      - mosquitto
     volumes:
       - ./scripts:/app/scripts:ro
       - ./tests/videos:/app/tests/videos:ro

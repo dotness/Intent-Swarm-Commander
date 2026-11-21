@@ -13,6 +13,7 @@ from src.uservice.operation.audit import ActorType, AuditEvent, AuditEventType
 from src.uservice.telemetry.models.contract.events import (
     WILDCARD_TELEMETRY_TOPIC,
     SwarmTelemetryEvent,
+    is_corridor_survey_event,
     is_edge_autonomous_alert,
     validate_topic_matches_event,
 )
@@ -36,6 +37,7 @@ class TelemetryIngestor:
         broker_host: str | None = None,
         broker_port: int | None = None,
         db_session_factory: Any = None,
+        corridor_survey_callback: Callable[[SwarmTelemetryEvent], Awaitable[None]] | None = None,
     ) -> None:
         self.live_store = live_store
         self.compactor = compactor
@@ -44,6 +46,7 @@ class TelemetryIngestor:
         self.broker_host = broker_host or os.getenv("MQTT_BROKER_HOST", "localhost")
         self.broker_port = int(broker_port or os.getenv("MQTT_BROKER_PORT", "1883"))
         self.db_session_factory = db_session_factory
+        self.corridor_survey_callback = corridor_survey_callback
         self._task: asyncio.Task[None] | None = None
         self._running = False
 
@@ -63,6 +66,9 @@ class TelemetryIngestor:
 
         if event.metric_type == "detection" and self.detection_callback is not None:
             await self.detection_callback(event)
+
+        if is_corridor_survey_event(event) and self.corridor_survey_callback is not None:
+            await self.corridor_survey_callback(event)
 
         return True
 
@@ -126,6 +132,41 @@ class TelemetryIngestor:
                         },
                     )
                 )
+
+            if is_corridor_survey_event(event):
+                extra = event.extra or {}
+                survey_evt_type = str(extra.get("survey_event_type", ""))
+                if survey_evt_type in (
+                    "corridor_trajectory",
+                    "corridor_phase",
+                    "corridor_report",
+                    "corridor_override",
+                ):
+                    try:
+                        swarm_uuid = uuid.UUID(str(event.swarm_id))
+                    except ValueError:
+                        swarm_uuid = None
+                    is_commander = extra.get("command_source") == "operator_corridor_override"
+                    session.add(
+                        AuditEvent(
+                            event_type=AuditEventType.COMMAND_EXECUTED,
+                            actor_id=(
+                                str(extra.get("commander_id") or f"edge:{event.drone_id}")
+                                if is_commander
+                                else f"edge:{event.drone_id}"
+                            ),
+                            actor_type=ActorType.COMMANDER if is_commander else ActorType.AGENT,
+                            swarm_instance_id=swarm_uuid,
+                            resource_id=str(extra.get("survey_id") or event.drone_id),
+                            details={
+                                **extra,
+                                "event_id": str(event.event_id),
+                                "project_id": event.project_id,
+                                "swarm_id": str(event.swarm_id),
+                                "flight_status": event.flight_status,
+                            },
+                        )
+                    )
 
             await session.commit()
 

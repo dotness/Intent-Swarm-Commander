@@ -17,6 +17,7 @@ class MissionType(str, enum.Enum):
     STRIKE = "strike"
     TRANSPORT = "transport"
     ESCORT = "escort"
+    CORRIDOR_SURVEY = "corridor_survey"
     ABORT = "abort"
 
 
@@ -64,3 +65,6 @@ class SwarmCommand(UUIDPrimaryKeyMixin, Base):
         Enum(CommandPriority), default=CommandPriority.NORMAL, nullable=False,
     )
     is_high_impact: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    survey_params: Mapped[str | None] = mapped_column(
+        Text, nullable=True, doc="Serialized CorridorSurveyParams JSON"
+    )

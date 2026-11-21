@@ -134,7 +134,63 @@
                 <span class="roster-table__empty">No detection snapshots for this drone yet</span>
             </div>
         </section>
+
+        <!-- Adaptive 3D Corridor Survey & Intelligence Panel -->
+        <section id="corridor-survey-panel" class="panel panel--corridor">
+            <h2 class="panel__title">Corridor Survey &amp; 3D Intelligence</h2>
+            <div class="corridor-controls">
+                <select id="corridor-survey-select" class="smeac-form__swarm-select" aria-label="Corridor Survey Selector">
+                    <option value="">No corridor surveys yet</option>
+                </select>
+                <button type="button" id="btn-corridor-refresh" class="btn btn--secondary">Refresh</button>
+                <button type="button" id="btn-corridor-recall" class="btn btn--warning" disabled>Recall Scout</button>
+                <button type="button" id="btn-corridor-emergency-abort" class="btn btn--danger" disabled>Emergency Abort</button>
+            </div>
+            <div id="corridor-status-banner" class="corridor-banner">
+                <span class="roster-table__empty">Submit a coordinate-free corridor survey SMEAC order to begin discovery.</span>
+            </div>
+            <div class="corridor-views-grid">
+                <div class="corridor-svg-card">
+                    <div class="corridor-svg-card__label">Top-Down 3D Plan (Relative East X vs. North Y meters)</div>
+                    <svg id="corridor-svg-plan" class="corridor-svg" viewBox="0 0 360 220" role="img" aria-label="Corridor top-down 3D plan"></svg>
+                </div>
+                <div class="corridor-svg-card">
+                    <div class="corridor-svg-card__label">Vertical Elevation Profile (Path Distance m vs. Altitude Z m)</div>
+                    <svg id="corridor-svg-elevation" class="corridor-svg" viewBox="0 0 360 220" role="img" aria-label="Corridor vertical elevation profile"></svg>
+                </div>
+            </div>
+            <div class="corridor-intel-grid">
+                <div>
+                    <div class="corridor-svg-card__label">Corridor Intelligence Findings &amp; Provenance</div>
+                    <ul id="corridor-findings-list" class="corridor-list">
+                        <li class="roster-table__empty">No intelligence findings recorded yet</li>
+                    </ul>
+                </div>
+                <div>
+                    <div class="corridor-svg-card__label">Full Persisted Snapshot Replay Filmstrip</div>
+                    <div id="corridor-snapshot-filmstrip" class="corridor-filmstrip">
+                        <span class="roster-table__empty">No corridor snapshots captured yet</span>
+                    </div>
+                </div>
+            </div>
+        </section>
     </main>
+
+    <!-- Corridor Two-Tier Override Confirmation Modal -->
+    <dialog id="corridor-abort-modal" class="hitl-modal">
+        <div class="hitl-modal__content">
+            <h2 id="corridor-modal-title" class="hitl-modal__title">Confirm Corridor Override</h2>
+            <p id="corridor-modal-description" class="hitl-modal__body"></p>
+            <div style="margin-bottom:1rem;">
+                <label for="corridor-override-rationale" style="display:block;margin-bottom:0.25rem;font-weight:600;">Operator Rationale (Optional)</label>
+                <textarea id="corridor-override-rationale" rows="2" placeholder="Optional mission override note..." style="width:100%;padding:0.5rem;border-radius:4px;border:1px solid #444;background:#1f2937;color:#fff;"></textarea>
+            </div>
+            <div class="hitl-modal__actions">
+                <button type="button" id="corridor-modal-cancel" class="btn btn--secondary">Cancel</button>
+                <button type="button" id="corridor-modal-confirm" class="btn btn--danger">Confirm</button>
+            </div>
+        </div>
+    </dialog>
 
     <!-- HITL Approval Modal -->
     <dialog id="hitl-modal" class="hitl-modal">
@@ -207,6 +263,7 @@
     <script src="js/map.js?v=9"></script>
     <script src="js/hitl.js?v=9"></script>
     <script src="js/auth_indicator.js?v=9"></script>
-    <script src="js/main.js?v=9"></script>
+    <script src="js/corridor.js?v=10"></script>
+    <script src="js/main.js?v=10"></script>
 </body>
 </html>

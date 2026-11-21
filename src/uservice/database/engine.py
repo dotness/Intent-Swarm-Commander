@@ -24,6 +24,7 @@ async def init_db() -> None:
     import src.uservice.operation.audit  # noqa: F401
     import src.uservice.swarm.models.storage.instance  # noqa: F401
     import src.uservice.telemetry.models.storage.live_state  # noqa: F401
+    import src.uservice.corridor.models.storage.survey  # noqa: F401
 
     from sqlalchemy import text
 
@@ -36,6 +37,8 @@ async def init_db() -> None:
                 "ALTER TABLE hitl_decisions ADD COLUMN IF NOT EXISTS snapshot_url TEXT",
                 "ALTER TABLE hitl_decisions ADD COLUMN IF NOT EXISTS target_class VARCHAR(128)",
                 "ALTER TABLE hitl_decisions ADD COLUMN IF NOT EXISTS confidence DOUBLE PRECISION",
+                "ALTER TABLE swarm_commands ADD COLUMN IF NOT EXISTS survey_params TEXT",
+                "ALTER TYPE missiontype ADD VALUE IF NOT EXISTS 'CORRIDOR_SURVEY'",
             ):
                 await conn.execute(text(stmt))
 

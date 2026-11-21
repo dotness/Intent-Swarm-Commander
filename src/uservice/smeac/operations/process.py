@@ -6,9 +6,13 @@ Orchestrates the full pipeline:
   3. (Future phases integrate safety verification and HITL gates here)
 """
 
-from datetime import timedelta
-import logging
+import asyncio
 from dataclasses import dataclass, field
+from datetime import timedelta
+import json
+import logging
+import os
+import uuid
 
 from temporalio import activity, workflow
 
@@ -39,11 +43,9 @@ def _extract_waypoints_from_commands(commands: list[dict]) -> list[dict]:
         alt_m = float(cmd.get("altitude_m") or 15.0)
         area = cmd.get("target_area") or {}
         if isinstance(area, str):
-            import json
-
             try:
                 area = json.loads(area)
-            except Exception:
+            except json.JSONDecodeError:
                 area = {}
         if not isinstance(area, dict):
             continue
@@ -78,25 +80,29 @@ async def parse_smeac_activity(input: ProcessSmeacInput) -> dict:
     if input.commands:
         return {"commands": input.commands}
 
-    import json
-    import uuid
     from sqlalchemy import select
-    from src.uservice.database.engine import async_session
+    from src.uservice.corridor.models.storage.survey import CorridorSurvey
+    import src.uservice.database.engine as db_engine
     from src.uservice.smeac.models.contract.command import SwarmCommand
 
-    async with async_session() as session:
+    async with db_engine.async_session() as session:
+        order_uuid = uuid.UUID(input.order_id)
         res = await session.execute(
-            select(SwarmCommand).where(SwarmCommand.smeac_order_id == uuid.UUID(input.order_id))
+            select(SwarmCommand).where(SwarmCommand.smeac_order_id == order_uuid)
         )
         rows = res.scalars().all()
+        survey_res = await session.execute(
+            select(CorridorSurvey).where(CorridorSurvey.smeac_order_id == order_uuid)
+        )
+        surveys_by_cmd = {s.command_id: s for s in survey_res.scalars().all()}
         commands = []
         for r in rows:
             target = r.target_area
             if isinstance(target, str):
-                try:
-                    target = json.loads(target)
-                except Exception:
-                    target = {}
+                target = json.loads(target) if target.strip().startswith(("{", "[")) else {}
+            sp_raw = getattr(r, "survey_params", None)
+            sp_dict = json.loads(sp_raw) if isinstance(sp_raw, str) and sp_raw.strip() else None
+            linked_survey = surveys_by_cmd.get(r.id)
             commands.append({
                 "id": str(r.id),
                 "mission_type": str(r.mission_type.value if hasattr(r.mission_type, "value") else r.mission_type),
@@ -106,6 +112,10 @@ async def parse_smeac_activity(input: ProcessSmeacInput) -> dict:
                 "drone_count": r.drone_count,
                 "altitude_m": r.altitude_m,
                 "is_high_impact": bool(r.is_high_impact),
+                "survey_id": str(linked_survey.id) if linked_survey is not None else None,
+                "lead_scout_drone_id": linked_survey.lead_scout_drone_id if linked_survey is not None else None,
+                "staging_hold_drone_ids": list(linked_survey.staging_hold_drone_ids) if linked_survey is not None else None,
+                "survey_params": sp_dict,
             })
         return {"commands": commands}
 
@@ -123,9 +133,6 @@ async def safety_check_activity(cmd: dict) -> list[dict]:
 @activity.defn(name="dispatch_edge_mission_activity")
 async def dispatch_edge_mission_activity(payload: dict) -> dict:
     """Dispatch extracted waypoints to the edge node and mark the SMEAC order executed."""
-    import asyncio
-    import os
-    import uuid
     import httpx
     from sqlalchemy import select, update
     from src.uservice.database.engine import async_session
@@ -146,12 +153,20 @@ async def dispatch_edge_mission_activity(payload: dict) -> dict:
             endpoint_url = res.scalar_one_or_none() or os.getenv("SWARM_DEFAULT_ENDPOINT")
 
     waypoints = _extract_waypoints_from_commands(commands)
+    corridor_cmds = [c for c in commands if str(c.get("mission_type", "")).lower() == "corridor_survey"]
+    standard_cmds = [c for c in commands if str(c.get("mission_type", "")).lower() != "corridor_survey"]
+
+    if corridor_cmds and not endpoint_url:
+        raise RuntimeError(
+            f"Swarm {swarm_id} has no edge endpoint_url configured for corridor survey dispatch"
+        )
+
     if endpoint_url and waypoints:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(
                 f"{endpoint_url.rstrip('/')}/navigate",
                 json={
-                    "command_id": str(commands[0].get("id")) if commands else order_id,
+                    "command_id": str(standard_cmds[0].get("id")) if standard_cmds else (str(commands[0].get("id")) if commands else order_id),
                     "swarm_id": swarm_id,
                     "project_id": project_id,
                     "waypoints": waypoints,
@@ -166,7 +181,47 @@ async def dispatch_edge_mission_activity(payload: dict) -> dict:
             )
 
     if endpoint_url:
-        for cmd in commands:
+        for cmd in corridor_cmds:
+            sp = cmd.get("survey_params") or {}
+            survey_id = str(cmd.get("survey_id") or "")
+            if not survey_id:
+                raise RuntimeError(f"Corridor survey command {cmd.get('id')} is missing survey_id")
+            start_payload = {
+                "survey_id": survey_id,
+                "command_id": str(cmd.get("id") or order_id),
+                "swarm_id": str(swarm_id),
+                "project_id": project_id,
+                "drone_id": str(cmd.get("lead_scout_drone_id") or "drone-1"),
+                "staging_hold_drone_ids": list(cmd.get("staging_hold_drone_ids") or []),
+                "entry_altitude_m": float(cmd["altitude_m"]) if cmd.get("altitude_m") is not None else 2.5,
+                "target_distance_m": float(sp.get("target_distance_m", 20.0)),
+                "distance_defaulted": bool(sp.get("distance_defaulted", False)),
+                "return_to_origin": bool(sp.get("return_to_origin", True)),
+                "corridor_descriptor": str(sp.get("corridor_descriptor") or "corridor"),
+                "intelligence_focus": list(sp.get("intelligence_focus") or []),
+                "min_altitude_m": float(sp.get("min_altitude_m", 1.2)),
+                "max_altitude_m": float(sp.get("max_altitude_m", 8.0)),
+                "cruise_speed_ms": float(sp.get("cruise_speed_ms", 1.5)),
+                "look_around_steps": 8,
+                "snapshot_interval_s": 0.4,
+                "guidance_timeout_s": 5.0,
+            }
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                c_resp = await client.post(
+                    f"{endpoint_url.rstrip('/')}/corridor-survey/start",
+                    json=start_payload,
+                )
+                c_resp.raise_for_status()
+                logger.info(
+                    "Dispatched corridor survey %s (scout=%s, staging_hold=%s) to edge %s for order %s",
+                    survey_id,
+                    start_payload["drone_id"],
+                    start_payload["staging_hold_drone_ids"],
+                    endpoint_url,
+                    order_id,
+                )
+
+        for cmd in standard_cmds:
             target_cls = (cmd.get("target_object_class") or "").strip()
             if not target_cls:
                 continue

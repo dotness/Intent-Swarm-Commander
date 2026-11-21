@@ -221,7 +221,19 @@ async function submitDecision(choice) {
     }
 }
 
+function closeForOtherSwarm(swarmId) {
+    if (activeSwarmId && activeSwarmId === swarmId) return;
+    const modal = document.getElementById('hitl-modal');
+    _clearCountdown(modal);
+    activeDecisionId = null;
+    activeSwarmId = null;
+    if (modal && modal.open) {
+        modal.close();
+    }
+}
+
 window.HitlController = {
     init: initHitl,
-    showModal: showHitlModal
+    showModal: showHitlModal,
+    closeForOtherSwarm
 };

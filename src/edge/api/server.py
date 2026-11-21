@@ -7,24 +7,37 @@ target_object_class assignments from the central Command Post.
 import asyncio
 import logging
 import os
+import re
+import uuid
 from dataclasses import dataclass
 from contextlib import asynccontextmanager
 from typing import Literal
 
 logger = logging.getLogger(__name__)
+_EDGE_DRONE_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 from src.edge.vision.camera import CameraStream
+from src.edge.vision.corridor_analyzer import CorridorVisualAnalyzer
 from src.edge.vision.inference import YoloEInference
+from src.edge.vision.target_matcher import EdgeTargetMatcher
+from src.edge.navigation.corridor_survey import (
+    CorridorSurveyConfig,
+    CorridorSurveyController,
+    SurveyPhase,
+)
 from src.edge.navigation.flight_controller import FlightController
 from src.edge.telemetry.spool import EdgeSpool
 from src.edge.telemetry.publisher import EdgeTelemetryPublisher
 from src.uservice.analytics.operations.minio_store import MinioStore
-from src.uservice.telemetry.models.contract.events import SwarmTelemetryEvent
+from src.uservice.telemetry.models.contract.events import (
+    SURVEY_STAGING_HOLD_STATUS,
+    SwarmTelemetryEvent,
+)
 
 from mavsdk import System as MavSystem
 
-from fastapi import FastAPI
-from pydantic import BaseModel, Field
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field, field_validator
 import uvicorn
 
 @dataclass
@@ -45,6 +58,8 @@ _vision_task = None
 _vision_tasks: dict[str, asyncio.Task] = {}
 _controllers: dict[str, FlightController] = {}
 _cameras: dict[str, CameraStream] = {}
+_corridor_controllers: dict[str, CorridorSurveyController] = {}
+_corridor_tasks: dict[str, asyncio.Task] = {}
 _telemetry_task = None
 _connect_task = None
 _edge_spool: EdgeSpool | None = None
@@ -99,7 +114,9 @@ async def telemetry_loop():
 
         async def update_battery():
             async for bat in _drone.telemetry.battery():
-                _telemetry_state["battery"] = int(bat.remaining_percent * 100)
+                raw_rem = float(bat.remaining_percent)
+                pct = raw_rem * 100.0 if raw_rem <= 1.0 else raw_rem
+                _telemetry_state["battery"] = max(0, min(100, int(pct)))
                 cur_pos = _telemetry_state["position"]
                 await _publish_loop_event(
                     "battery",
@@ -174,6 +191,8 @@ async def lifespan(app: FastAPI):
 
     for ctrl in _controllers.values():
         ctrl.stop()
+    for c_task in _corridor_tasks.values():
+        c_task.cancel()
     for task in _vision_tasks.values():
         task.cancel()
     for cam in _cameras.values():
@@ -442,6 +461,253 @@ def create_edge_app() -> "FastAPI":
             "waypoint_count": len(body.waypoints),
         }
 
+    class CorridorSurveyStartRequest(BaseModel):
+        survey_id: str
+        command_id: str
+        swarm_id: str
+        project_id: str = "default-theater"
+        drone_id: str = "drone-1"
+        staging_hold_drone_ids: list[str] = Field(default_factory=list)
+        entry_altitude_m: float = Field(default=2.5, ge=0.5, le=120.0)
+        target_distance_m: float = Field(default=20.0, gt=0.0)
+        distance_defaulted: bool = False
+        return_to_origin: bool = True
+        corridor_descriptor: str = "corridor"
+        intelligence_focus: list[str] = Field(default_factory=list)
+        min_altitude_m: float = Field(default=1.2, ge=0.5)
+        max_altitude_m: float = Field(default=8.0, le=120.0)
+        cruise_speed_ms: float = Field(default=1.5, ge=0.3, le=5.0)
+        look_around_steps: int = Field(default=8, ge=4, le=16)
+        snapshot_interval_s: float = Field(default=0.4, ge=0.1, le=5.0)
+        guidance_timeout_s: float = Field(default=5.0, ge=1.0, le=60.0)
+
+        @field_validator("survey_id")
+        @classmethod
+        def _validate_survey_uuid(cls, value: str) -> str:
+            uuid.UUID(str(value))
+            return str(value)
+
+        @field_validator("drone_id")
+        @classmethod
+        def _validate_drone_id(cls, value: str) -> str:
+            if not _EDGE_DRONE_ID_RE.match(value.strip()):
+                raise ValueError(f"Invalid drone_id: {value!r}")
+            return value.strip()
+
+        @field_validator("staging_hold_drone_ids")
+        @classmethod
+        def _validate_staging_drone_ids(cls, values: list[str]) -> list[str]:
+            cleaned: list[str] = []
+            for item in values:
+                trimmed = item.strip()
+                if trimmed and not _EDGE_DRONE_ID_RE.match(trimmed):
+                    raise ValueError(f"Invalid staging_hold drone_id: {item!r}")
+                if trimmed:
+                    cleaned.append(trimmed)
+            return cleaned
+
+    class CorridorOverrideBody(BaseModel):
+        rationale: str | None = Field(default=None, max_length=500)
+        commander_id: str = Field(default="commander", max_length=128)
+
+    @app.post("/corridor-survey/start")
+    async def start_corridor_survey(body: CorridorSurveyStartRequest):
+        global _nav_task, _flight_controller, _vision_task
+        if body.min_altitude_m >= body.max_altitude_m:
+            raise HTTPException(
+                status_code=422,
+                detail=f"min_altitude_m ({body.min_altitude_m}) must be less than max_altitude_m ({body.max_altitude_m})",
+            )
+
+        default_drone_id = os.getenv("DRONE_ID", "drone-1")
+        scout_drone_id = (body.drone_id or default_drone_id).strip() or default_drone_id
+        scout_drone = _drone if scout_drone_id == default_drone_id else None
+        if scout_drone is None:
+            raise HTTPException(
+                status_code=503,
+                detail=f"No active flight controller attached for scout {scout_drone_id}",
+            )
+        staging_ids = [
+            d.strip()
+            for d in body.staging_hold_drone_ids
+            if d and d.strip() and d.strip() != scout_drone_id
+        ]
+
+        if _telemetry_publisher is not None:
+            _telemetry_publisher.swarm_id = body.swarm_id
+            _telemetry_publisher.project_id = body.project_id
+
+        # Cancel any prior navigation task
+        if _nav_task and not _nav_task.done():
+            _nav_task.cancel()
+            try:
+                await _nav_task
+            except asyncio.CancelledError:
+                pass
+
+        # Stop pre-existing vision/controller tasks on scout + all staging hold drones (FR-019)
+        for d_id in [scout_drone_id, *staging_ids]:
+            prev_ctrl = _controllers.get(d_id)
+            if prev_ctrl:
+                prev_ctrl.stop()
+            prev_vtask = _vision_tasks.pop(d_id, None)
+            if prev_vtask and not prev_vtask.done():
+                prev_vtask.cancel()
+                try:
+                    await prev_vtask
+                except asyncio.CancelledError:
+                    pass
+
+        # Cancel any pre-existing active corridor survey on this scout drone
+        for existing_sid, existing_ctrl in list(_corridor_controllers.items()):
+            if existing_ctrl.config.drone_id == scout_drone_id:
+                existing_task = _corridor_tasks.get(existing_sid)
+                if existing_task and not existing_task.done():
+                    existing_task.cancel()
+                    try:
+                        await existing_task
+                    except asyncio.CancelledError:
+                        pass
+
+        # Publish explicit survey_staging_hold telemetry for every held staging drone (`FR-019`)
+        if _telemetry_publisher is not None:
+            cur_pos = _telemetry_state.get("position") or {}
+            base_lat = float(cur_pos.get("lat") or 0.0)
+            base_lon = float(cur_pos.get("lon") or 0.0)
+            base_alt = float(cur_pos.get("alt") or body.entry_altitude_m)
+            for staged_id in staging_ids:
+                await _telemetry_publisher.publish_event(
+                    SwarmTelemetryEvent(
+                        project_id=body.project_id,
+                        swarm_id=body.swarm_id,
+                        drone_id=staged_id,
+                        metric_type="alert",
+                        lat=base_lat,
+                        lon=base_lon,
+                        alt_m=base_alt,
+                        heading_deg=0.0,
+                        speed_ms=0.0,
+                        battery_pct=max(
+                            0.0,
+                            min(
+                                100.0,
+                                float(_telemetry_state["battery"])
+                                if _telemetry_state.get("battery") is not None
+                                else 100.0,
+                            ),
+                        ),
+                        flight_status=SURVEY_STAGING_HOLD_STATUS,
+                        mission_id=body.command_id,
+                        extra={
+                            "command_source": "edge_corridor_survey",
+                            "decision_authority": "edge",
+                            "survey_event_type": "corridor_phase",
+                            "survey_id": body.survey_id,
+                            "from_phase": SurveyPhase.INITIALIZING.value,
+                            "to_phase": SurveyPhase.INITIALIZING.value,
+                            "flight_status": SURVEY_STAGING_HOLD_STATUS,
+                            "reason": f"Staging hold at entrance while {scout_drone_id} surveys corridor",
+                            "rel_x_m": 0.0,
+                            "rel_y_m": 0.0,
+                            "rel_z_m": 0.0,
+                            "heading_deg": 0.0,
+                            "cumulative_distance_m": 0.0,
+                            "staging_hold_drone_ids": staging_ids,
+                        },
+                    )
+                )
+
+        # Select camera stream for the lead scout drone
+        cam = _camera if scout_drone_id == default_drone_id else _cameras.get(scout_drone_id)
+        if cam is None and scout_drone_id != default_drone_id:
+            vcam_base = os.getenv("VIRTUAL_CAM_BASE_URL", "").strip()
+            if vcam_base:
+                cam = CameraStream(device_id=f"{vcam_base.rstrip('/')}/stream/{scout_drone_id}")
+                _cameras[scout_drone_id] = cam
+        if cam is None:
+            cam = _camera
+        if cam is not None and (getattr(cam, "_capture", None) is None or not cam._capture.isOpened()):
+            await asyncio.to_thread(cam.open)
+
+        analyzer = CorridorVisualAnalyzer(
+            inference=_inference,
+            target_matcher=EdgeTargetMatcher(),
+            mission_id=body.command_id,
+        )
+        config = CorridorSurveyConfig(
+            survey_id=body.survey_id,
+            command_id=body.command_id,
+            swarm_id=body.swarm_id,
+            project_id=body.project_id,
+            drone_id=scout_drone_id,
+            staging_hold_drone_ids=staging_ids,
+            entry_altitude_m=body.entry_altitude_m,
+            target_distance_m=body.target_distance_m,
+            distance_defaulted=body.distance_defaulted,
+            return_to_origin=body.return_to_origin,
+            corridor_descriptor=body.corridor_descriptor,
+            intelligence_focus=list(body.intelligence_focus),
+            min_altitude_m=body.min_altitude_m,
+            max_altitude_m=body.max_altitude_m,
+            cruise_speed_ms=body.cruise_speed_ms,
+            look_around_steps=body.look_around_steps,
+            snapshot_interval_s=body.snapshot_interval_s,
+            guidance_timeout_s=body.guidance_timeout_s,
+        )
+        ctrl = CorridorSurveyController(
+            config=config,
+            camera=cam,
+            analyzer=analyzer,
+            drone=scout_drone,
+            telemetry_publisher=_telemetry_publisher,
+            telemetry_state=_telemetry_state if scout_drone_id == default_drone_id else None,
+        )
+        _corridor_controllers[body.survey_id] = ctrl
+
+        async def _run_survey() -> None:
+            try:
+                await ctrl.run()
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                logger.exception("Corridor survey %s failed: %s", body.survey_id, exc)
+
+        _corridor_tasks[body.survey_id] = asyncio.create_task(_run_survey())
+        return {
+            "status": "accepted",
+            "survey_id": body.survey_id,
+            "drone_id": scout_drone_id,
+            "staging_hold_drone_ids": staging_ids,
+            "phase": SurveyPhase.INITIAL_LOOK_AROUND.value,
+        }
+
+    @app.get("/corridor-survey/{survey_id}/status")
+    async def corridor_survey_status(survey_id: str):
+        ctrl = _corridor_controllers.get(survey_id)
+        if ctrl is None:
+            raise HTTPException(status_code=404, detail=f"Corridor survey {survey_id} not found on edge node")
+        return ctrl.get_status_summary()
+
+    @app.post("/corridor-survey/{survey_id}/recall")
+    async def recall_corridor_survey(survey_id: str, body: CorridorOverrideBody | None = None):
+        ctrl = _corridor_controllers.get(survey_id)
+        if ctrl is None:
+            raise HTTPException(status_code=404, detail=f"Corridor survey {survey_id} not active on edge node")
+        return await ctrl.recall(
+            rationale=body.rationale if body is not None else None,
+            commander_id=body.commander_id if body is not None else "commander",
+        )
+
+    @app.post("/corridor-survey/{survey_id}/emergency-abort")
+    async def emergency_abort_corridor_survey(survey_id: str, body: CorridorOverrideBody | None = None):
+        ctrl = _corridor_controllers.get(survey_id)
+        if ctrl is None:
+            raise HTTPException(status_code=404, detail=f"Corridor survey {survey_id} not active on edge node")
+        return await ctrl.emergency_abort(
+            rationale=body.rationale if body is not None else None,
+            commander_id=body.commander_id if body is not None else "commander",
+        )
+
     @app.get("/health")
     async def health():
         return {"status": "ok", "node": "edge"}
@@ -467,6 +733,17 @@ def create_edge_app() -> "FastAPI":
             _telemetry_state["target_intercepted"] = bool(_flight_controller._intercepted)
             if _flight_controller.last_avoidance_command is not None:
                 _telemetry_state["last_avoidance_command"] = _flight_controller.last_avoidance_command
+        if _corridor_controllers:
+            latest_ctrl = list(_corridor_controllers.values())[-1]
+            summary = latest_ctrl.get_status_summary()
+            _telemetry_state["active_corridor_survey"] = summary
+            if latest_ctrl.phase not in (
+                SurveyPhase.COMPLETED,
+                SurveyPhase.COMPLETED_HOLDING,
+                SurveyPhase.IMPASSABLE_START,
+                SurveyPhase.EMERGENCY_HOLD,
+            ):
+                _telemetry_state["status"] = summary["flight_status"]
         return _telemetry_state
 
     @app.get("/spool/status")

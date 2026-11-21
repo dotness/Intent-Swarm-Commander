@@ -257,8 +257,12 @@ async function reviewTarget(targetId, action, splitEventId = null, projectId = g
 }
 
 async function fetchSnapshotBlobUrl(proxyUrl) {
-    const url = proxyUrl.startsWith('http') ? proxyUrl : `http://localhost:8000${proxyUrl}`;
-    const res = await fetch(url, { headers: window.authManager.getAuthHeader() });
+    if (typeof proxyUrl !== "string" || !proxyUrl.startsWith("/api/v1/")) {
+        throw new Error("Invalid snapshot proxy URL");
+    }
+    const origin = API_BASE.replace(/\/api\/v1$/, "");
+    const res = await fetch(`${origin}${proxyUrl}`, { headers: window.authManager.getAuthHeader() });
+    if (res.status === 401) { window.authManager.clearSession(); throw new Error("Unauthorized"); }
     if (!res.ok) return null;
     const blob = await res.blob();
     return URL.createObjectURL(blob);
@@ -302,6 +306,69 @@ async function draftSmeacWithCopilot(commanderIntent, projectId = getActiveProje
     return { draft: json.data, meta: json.meta || {} };
 }
 
+async function fetchCorridorSurveys(swarmId, projectId = getActiveProjectId()) {
+    if (!swarmId) return { surveys: [] };
+    try {
+        const params = new URLSearchParams({ project_id: projectId });
+        const res = await fetch(
+            `${API_BASE}/swarms/${encodeURIComponent(swarmId)}/corridor-surveys?${params.toString()}`,
+            { headers: window.authManager.getAuthHeader() }
+        );
+        if (res.status === 401) { window.authManager.clearSession(); throw new Error("Unauthorized"); }
+        if (!res.ok) return { surveys: [] };
+        const json = await res.json();
+        return { surveys: json.data || [] };
+    } catch (e) {
+        console.error(e);
+        return { surveys: [] };
+    }
+}
+
+async function fetchCorridorSurveyReport(swarmId, surveyId, projectId = getActiveProjectId()) {
+    const params = new URLSearchParams({ project_id: projectId });
+    const res = await fetch(
+        `${API_BASE}/swarms/${encodeURIComponent(swarmId)}/corridor-surveys/${encodeURIComponent(surveyId)}?${params.toString()}`,
+        { headers: window.authManager.getAuthHeader() }
+    );
+    if (res.status === 401) { window.authManager.clearSession(); throw new Error("Unauthorized"); }
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || err.error || "Failed to fetch corridor survey report");
+    }
+    const json = await res.json();
+    return json.data || json;
+}
+
+async function _postCorridorOverride(swarmId, surveyId, actionPath, rationale = null, projectId = getActiveProjectId()) {
+    const params = new URLSearchParams({ project_id: projectId });
+    const res = await fetch(
+        `${API_BASE}/swarms/${encodeURIComponent(swarmId)}/corridor-surveys/${encodeURIComponent(surveyId)}/${actionPath}?${params.toString()}`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...window.authManager.getAuthHeader()
+            },
+            body: JSON.stringify({ rationale })
+        }
+    );
+    if (res.status === 401) { window.authManager.clearSession(); throw new Error("Unauthorized"); }
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || err.error || `Corridor ${actionPath} failed`);
+    }
+    const json = await res.json();
+    return json.data || json;
+}
+
+async function recallCorridorSurvey(swarmId, surveyId, rationale = null, projectId = getActiveProjectId()) {
+    return _postCorridorOverride(swarmId, surveyId, 'recall', rationale, projectId);
+}
+
+async function emergencyAbortCorridorSurvey(swarmId, surveyId, rationale = null, projectId = getActiveProjectId()) {
+    return _postCorridorOverride(swarmId, surveyId, 'emergency-abort', rationale, projectId);
+}
+
 window.ApiClient = Object.assign(window.ApiClient || {}, {
     getActiveProjectId,
     fetchSwarms,
@@ -318,5 +385,9 @@ window.ApiClient = Object.assign(window.ApiClient || {}, {
     reviewTarget,
     fetchSnapshotBlobUrl,
     fetchAar,
-    draftSmeacWithCopilot
+    draftSmeacWithCopilot,
+    fetchCorridorSurveys,
+    fetchCorridorSurveyReport,
+    recallCorridorSurvey,
+    emergencyAbortCorridorSurvey
 });

@@ -2,10 +2,14 @@
 
 import logging
 from typing import Callable
+import uuid
 
 import httpx
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
+
+from src.uservice.database.engine import async_session
+from src.uservice.swarm.models.storage.instance import SwarmInstance
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +20,7 @@ _DIRECT_PREFIXES = (
     "/api/v1/targets",
     "/api/v1/smeac/draft",
 )
+_DIRECT_SWARM_SEGMENTS = frozenset({"orders", "hitl", "telemetry", "audit", "corridor-surveys"})
 
 
 async def swarm_proxy_middleware(request: Request, call_next: Callable) -> Response:
@@ -35,20 +40,11 @@ async def swarm_proxy_middleware(request: Request, call_next: Callable) -> Respo
         return await call_next(request)
 
     # Pass through endpoints handled directly by the microservice application routers
-    if any(endpoint in path for endpoint in ["/orders", "/hitl", "/telemetry", "/audit"]):
-        return await call_next(request)
-
-    # Example path: /api/v1/swarms/1234/commands
     parts = path.split("/")
-    if len(parts) < 6:
+    if len(parts) < 6 or parts[5] in _DIRECT_SWARM_SEGMENTS:
         return await call_next(request)
 
     swarm_id = parts[4]
-
-    # In integration phase, we lookup the swarm's endpoint_url from the DB
-    from src.uservice.database.engine import async_session
-    from src.uservice.swarm.models.storage.instance import SwarmInstance
-    import uuid
 
     try:
         swarm_uuid = uuid.UUID(swarm_id)

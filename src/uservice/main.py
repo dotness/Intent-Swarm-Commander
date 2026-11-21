@@ -16,6 +16,8 @@ from fastapi.responses import JSONResponse
 
 from src.uservice.analytics.api.routes import router as analytics_router
 from src.uservice.analytics.operations.minio_store import MinioStore, MinioUnavailableError
+from src.uservice.corridor.api.routes import router as corridor_router
+from src.uservice.corridor.operations.survey_service import ingest_corridor_event
 from src.uservice.database.engine import async_session, init_db
 from src.uservice.smeac.api.routes import router as smeac_router
 from src.uservice.hitl.api.routes import router as hitl_router
@@ -49,7 +51,11 @@ async def lifespan(app: FastAPI):
 
     async def _handle_detection(event) -> None:
         await correlator.ingest_detection(event)
-        if getattr(event, "flight_status", None) == "approaching" and getattr(event, "snapshot_uri", None):
+        flight_status = str(getattr(event, "flight_status", "") or "")
+        # Adaptive corridor survey telemetry (`survey_*`) never pauses for blocking mid-corridor HITL modals (`FR-016`)
+        if flight_status.startswith("survey_"):
+            return
+        if flight_status == "approaching" and getattr(event, "snapshot_uri", None):
             import uuid
             from sqlalchemy import select
             from src.uservice.hitl.models.storage.decision import HitlDecision
@@ -95,11 +101,21 @@ async def lifespan(app: FastAPI):
                     )
                     await session.commit()
 
+    async def _handle_corridor_survey_event(event) -> None:
+        async with async_session() as session:
+            try:
+                await ingest_corridor_event(session, event)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
     compactor = getattr(app.state, "parquet_compactor", None) or ParquetCompactor(minio_store=minio_store)
     ingestor = getattr(app.state, "telemetry_ingestor", None) or TelemetryIngestor(
         live_store=live_store,
         compactor=compactor,
         detection_callback=_handle_detection,
+        corridor_survey_callback=_handle_corridor_survey_event,
         db_session_factory=async_session,
     )
 
@@ -197,6 +213,7 @@ app.include_router(swarm_router, prefix="/api/v1")
 app.include_router(telemetry_router, prefix="/api/v1")
 app.include_router(threat_router, prefix="/api/v1")
 app.include_router(analytics_router, prefix="/api/v1")
+app.include_router(corridor_router, prefix="/api/v1")
 
 
 @app.exception_handler(MemgraphUnavailableError)

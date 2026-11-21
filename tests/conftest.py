@@ -530,6 +530,7 @@ async def sqlite_db_session():
     import src.uservice.operation.audit  # noqa: F401
     import src.uservice.swarm.models.storage.instance  # noqa: F401
     import src.uservice.telemetry.models.storage.live_state  # noqa: F401
+    import src.uservice.corridor.models.storage.survey  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

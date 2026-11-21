@@ -9,8 +9,8 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.uservice.base.errors import ResourceDoesNotExist, ValidationError
 from src.uservice.base.models.api.response import Response
-from src.uservice.base.errors import ResourceDoesNotExist
 from src.uservice.database.engine import get_db
 from src.uservice.security.middleware import require_scopes
 from src.uservice.smeac.models.contract.schemas import (
@@ -41,7 +41,14 @@ async def submit_smeac_order(
     graph_client = getattr(request.app.state, "memgraph_client", None)
 
     facade = await SmeacFacade.create(session=session, user=user, graph_client=graph_client)
-    result = await facade.submit_smeac_order(swarm_id=swarm_id, body=body)
+    try:
+        result = await facade.submit_smeac_order(swarm_id=swarm_id, body=body)
+    except ResourceDoesNotExist as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     return Response[SmeacOrderResponse].create(data=SmeacOrderResponse(**result))
 
 
@@ -65,6 +72,8 @@ async def get_order_status(
         result = await facade.get_order_status(swarm_id=swarm_id, order_id=order_id)
     except ResourceDoesNotExist as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     return Response[OrderStatusResponse].create(
         data=OrderStatusResponse(**result)

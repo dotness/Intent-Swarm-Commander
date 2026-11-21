@@ -38,10 +38,24 @@ class CameraStream:
         self._reader_thread: threading.Thread | None = None
 
     def _reader_loop(self) -> None:
+        fail_count = 0
         while self._reader_running and self._capture is not None:
             ret, frame = self._capture.read()
             if not ret:
+                fail_count += 1
+                if (
+                    fail_count >= 10
+                    and isinstance(self.device_id, str)
+                    and self.device_id.startswith(("http://", "https://"))
+                ):
+                    logger.warning("Camera stream %s disconnected; reconnecting", self.device_id)
+                    self._capture.release()
+                    self._capture = cv2.VideoCapture(self.device_id)
+                    if self._capture.isOpened():
+                        self._capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    fail_count = 0
                 continue
+            fail_count = 0
             with self._frame_lock:
                 self._latest_frame = frame
 

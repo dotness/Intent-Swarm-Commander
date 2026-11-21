@@ -35,6 +35,10 @@ class SwarmCommandResponse(BaseModel):
     altitude_m: float | None
     is_high_impact: bool
     verification_status: str = "pending"
+    survey_id: uuid.UUID | None = None
+    lead_scout_drone_id: str | None = None
+    staging_hold_drone_ids: list[str] | None = None
+    survey_params: dict[str, Any] | None = None
 
 
 class SmeacOrderResponse(BaseModel):

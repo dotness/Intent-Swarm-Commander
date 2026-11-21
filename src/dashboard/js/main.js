@@ -16,6 +16,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     window.AuthIndicator.update();
     window.MapController.initMap();
     window.HitlController.init();
+    if (window.CorridorController && typeof window.CorridorController.init === "function") {
+        window.CorridorController.init();
+    }
     loadHistory();
 
     // Wire up the SMEAC form
@@ -100,7 +103,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 /**
  * Fetch and populate the swarm selector.
  */
-async function loadSwarms() {
+async function loadSwarms(skipAutoSelect = false) {
     const data = await window.ApiClient.fetchSwarms();
     const select = document.getElementById("swarm-select");
     
@@ -117,7 +120,7 @@ async function loadSwarms() {
     });
 
     // If swarms exist, auto-select the first one
-    if (data.swarms.length > 0) {
+    if (!skipAutoSelect && data.swarms.length > 0) {
         select.value = data.swarms[0].id;
         selectSwarm(data.swarms[0].id);
     }
@@ -129,6 +132,9 @@ async function loadSwarms() {
 function selectSwarm(swarmId) {
     console.log(`Swarm selected: ${swarmId}`);
     currentSwarmId = swarmId;
+    if (window.HitlController && typeof window.HitlController.closeForOtherSwarm === "function") {
+        window.HitlController.closeForOtherSwarm(swarmId);
+    }
 
     // Clear old intervals
     if (telemetryInterval) clearInterval(telemetryInterval);
@@ -141,6 +147,9 @@ function selectSwarm(swarmId) {
     // Set polling intervals
     telemetryInterval = setInterval(pollTelemetry, 200); // 5 Hz polling rate per SC-002
     hitlInterval = setInterval(pollHitl, 5000);
+    if (window.CorridorController && typeof window.CorridorController.setSwarm === "function") {
+        window.CorridorController.setSwarm(swarmId);
+    }
 }
 
 /**
@@ -189,8 +198,8 @@ async function handleCreateSwarmSubmit(event) {
         modal.close();
         logHistory(`Swarm '${swarm.name}' provisioned (${swarm.id})`);
 
-        // Refresh swarm selector and select newly created swarm
-        await loadSwarms();
+        // Refresh swarm selector and select newly created swarm without selecting an unrelated swarm first
+        await loadSwarms(true);
         const select = document.getElementById("swarm-select");
         if (select) {
             select.value = swarm.id;
@@ -299,6 +308,9 @@ async function handleSmeacSubmit(event) {
 
         if (result.status === "pending_hitl") {
             pollHitl();
+        }
+        if (window.CorridorController && typeof window.CorridorController.refresh === "function") {
+            window.CorridorController.refresh();
         }
         
         logHistory(`SMEAC Order ${result.order_id} (${result.status})`);
@@ -678,7 +690,7 @@ async function refreshDroneVisionPanel() {
             }
         }
 
-        galleryEl.innerHTML = "";
+        galleryEl.replaceChildren();
         if (matched.length === 0) {
             const empty = document.createElement("span");
             empty.className = "roster-table__empty";

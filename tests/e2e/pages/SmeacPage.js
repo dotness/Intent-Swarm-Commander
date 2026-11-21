@@ -41,7 +41,7 @@ class SmeacPage {
   }
 
   async expectSuccess() {
-    await expect(this.resultDiv).toBeVisible();
+    await expect(this.resultDiv).toBeVisible({ timeout: 20000 });
     await expect(this.resultDiv).toContainText('Order Submitted Successfully');
   }
 

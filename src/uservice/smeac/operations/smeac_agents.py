@@ -20,16 +20,19 @@ class GeoJsonTargetArea(BaseModel):
 
     type: str = Field(
         default="LineString",
-        description="GeoJSON geometry type: LineString, Polygon, or Point",
+        description="GeoJSON geometry type: LineString, Polygon, Point, or RelativeCorridor",
     )
     coordinates: list[Any] = Field(
         default_factory=list,
-        description="GeoJSON coordinates in [longitude, latitude] order",
+        description="GeoJSON coordinates in [longitude, latitude] order (empty list for RelativeCorridor)",
     )
 
     @model_validator(mode="after")
     def _normalize_geojson_shape(self) -> "GeoJsonTargetArea":
         coords = self.coordinates
+        if self.type == "RelativeCorridor":
+            self.coordinates = []
+            return self
         if (
             self.type == "LineString"
             and len(coords) >= 2
@@ -47,10 +50,45 @@ class GeoJsonTargetArea(BaseModel):
         return self
 
 
+class CorridorSurveyDraftDTO(BaseModel):
+    """Raw structured corridor survey extraction from the SMEAC parser before fail-closed facade validation."""
+
+    target_distance_m: float | None = Field(
+        default=None,
+        description="Ordered corridor survey distance in meters (None if omitted in SMEAC text; extract negatives/zero verbatim so facade can reject).",
+    )
+    return_to_origin: bool = Field(
+        default=True,
+        description="True when drone must return along the discovered path ('go back'), False only when ordered to hold at far end.",
+    )
+    corridor_descriptor: str = Field(
+        default="corridor",
+        description="Passage context (e.g. 'corridor', 'tunnel', 'alleyway', 'hallway').",
+    )
+    intelligence_focus: list[str] = Field(
+        default_factory=list,
+        description="Objects or hazards of intelligence interest to capture without HITL pausing.",
+    )
+    min_altitude_m: float = Field(
+        default=1.2,
+        description="Minimum floor altitude safety bound in meters (default 1.2).",
+    )
+    max_altitude_m: float = Field(
+        default=8.0,
+        description="Maximum ceiling altitude safety bound in meters (default 8.0).",
+    )
+    cruise_speed_ms: float = Field(
+        default=1.5,
+        description="Nominal survey speed in m/s (default 1.5).",
+    )
+
+
 class SwarmCommandDTO(BaseModel):
     """Structured output from the SMEAC parser agent."""
 
-    mission_type: str = Field(description="One of: recon, patrol, strike, transport, escort, abort")
+    mission_type: str = Field(
+        description="One of: recon, patrol, strike, transport, escort, corridor_survey, abort"
+    )
     formation_type: str = Field(description="One of: line, wedge, diamond, spread, stack")
     target_area: GeoJsonTargetArea = Field(description="GeoJSON geometry object for the target area")
     target_object_class: str | None = Field(
@@ -61,6 +99,10 @@ class SwarmCommandDTO(BaseModel):
     speed_ms: float | None = Field(default=None, ge=0, description="Operational speed in m/s")
     duration_s: int | None = Field(default=None, ge=0, description="Estimated mission duration in seconds")
     priority: str = Field(default="normal", description="One of: critical, high, normal, low")
+    survey_params: CorridorSurveyDraftDTO | None = Field(
+        default=None,
+        description="Populated only when mission_type is 'corridor_survey'.",
+    )
 
 
 class SmeacParseResult(BaseModel):
@@ -93,6 +135,10 @@ Rules:
     {"type": "Polygon", "coordinates": [[[lon1, lat1], [lon2, lat2], [lon3, lat3], [lon1, lat1]]]}
   * For a single stationary waypoint or point target, generate:
     {"type": "Point", "coordinates": [lon, lat]}
+  * For coordinate-free adaptive spatial corridor/tunnel/passage/hallway/alleyway inspection orders with NO map coordinates (e.g. "go check the corridor next 20 meters and go back"):
+    - Set mission_type = "corridor_survey".
+    - Set target_area = {"type": "RelativeCorridor", "coordinates": []}. NEVER fabricate or guess fake GPS coordinates.
+    - Populate survey_params with target_distance_m (extracted numeric meters, including <= 0 if ordered; None if distance omitted), return_to_origin (True unless order explicitly instructs holding at the far end), corridor_descriptor, intelligence_focus (list of notable objects/hazards mentioned), and any min_altitude_m / max_altitude_m bounds.
 - If explicit latitude/longitude coordinates (such as 52.5200, 13.4050) are mentioned anywhere in the Situation, Mission, or Execution text, extract them accurately into target_area coordinates [longitude, latitude].
 - If the Execution field mentions a specific formation, use it. Otherwise infer
   the best formation for the mission type.
